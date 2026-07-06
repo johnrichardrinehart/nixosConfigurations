@@ -311,7 +311,34 @@ in
 
   services.getty.loginOptions = "-- \\u TMOUT=10";
 
-  dev.johnrinehart.sound.enable = true;
+  dev.johnrinehart.sound = {
+    enable = true;
+
+    rnnoise.inputRules = [
+      {
+        matches = [
+          {
+            "media.class" = "Audio/Source";
+            "api.alsa.card.name" = "Samson Q9U";
+          }
+        ];
+        actions.update-props = {
+          "priority.session" = 2300;
+        };
+      }
+      {
+        matches = [
+          {
+            "media.class" = "Audio/Source";
+            "api.alsa.card.name" = "HDA Intel PCH";
+          }
+        ];
+        actions.update-props = {
+          "priority.session" = 2200;
+        };
+      }
+    ];
+  };
 
   virtualisation.vmVariant = _: {
     fileSystems."/" = {
