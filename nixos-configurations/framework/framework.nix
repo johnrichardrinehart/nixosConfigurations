@@ -314,30 +314,41 @@ in
   dev.johnrinehart.sound = {
     enable = true;
 
-    rnnoise.inputRules = [
-      {
-        matches = [
-          {
-            "media.class" = "Audio/Source";
-            "api.alsa.card.name" = "Samson Q9U";
-          }
-        ];
-        actions.update-props = {
-          "priority.session" = 2300;
-        };
-      }
-      {
-        matches = [
-          {
-            "media.class" = "Audio/Source";
-            "api.alsa.card.name" = "HDA Intel PCH";
-          }
-        ];
-        actions.update-props = {
-          "priority.session" = 2200;
-        };
-      }
-    ];
+    rnnoise = {
+      highpass = {
+        enable = true;
+        frequency = 210.0;
+      };
+      deepfilter = {
+        enable = true;
+        attenuationLimit = 60.0;
+        postFilterBeta = 0.02;
+      };
+      inputRules = [
+        {
+          matches = [
+            {
+              "media.class" = "Audio/Source";
+              "api.alsa.card.name" = "Samson Q9U";
+            }
+          ];
+          actions.update-props = {
+            "priority.session" = 2300;
+          };
+        }
+        {
+          matches = [
+            {
+              "media.class" = "Audio/Source";
+              "api.alsa.card.name" = "HDA Intel PCH";
+            }
+          ];
+          actions.update-props = {
+            "priority.session" = 2200;
+          };
+        }
+      ];
+    };
   };
 
   virtualisation.vmVariant = _: {
