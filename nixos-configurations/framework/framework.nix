@@ -217,12 +217,20 @@ in
   };
 
   # The endpoint is a DNS name, and network-online.target can be reached before
-  # nscd/resolvconf finish restarting during nixos-rebuild switch. Wait for
-  # host name lookup services too so transient DNS unavailability does not make
-  # the switch fail while starting wg-quick.
+  # nscd/resolvconf finish restarting during nixos-rebuild switch. Order after
+  # host name lookup services, but keep the dependency soft so a transient nscd
+  # start-limit hit does not also fail the WireGuard unit.
   systemd.services.wg-quick-wg-nc = {
     after = [ "nss-lookup.target" ];
-    requires = [ "nss-lookup.target" ];
+    wants = [ "nss-lookup.target" ];
+  };
+
+  # Tailscale/openresolv can update DNS several times during early boot, which
+  # repeatedly stops and restarts nscd via nss-lookup.target. nsncd itself exits
+  # cleanly, so allow the burst instead of leaving name lookups failed.
+  systemd.services.nscd.unitConfig = {
+    StartLimitBurst = 20;
+    StartLimitIntervalSec = "30s";
   };
 
   # Personal WireGuard via the OCI hub. This stays on a separate subnet/port
