@@ -216,6 +216,15 @@ in
     ];
   };
 
+  # The endpoint is a DNS name, and network-online.target can be reached before
+  # nscd/resolvconf finish restarting during nixos-rebuild switch. Wait for
+  # host name lookup services too so transient DNS unavailability does not make
+  # the switch fail while starting wg-quick.
+  systemd.services.wg-quick-wg-nc = {
+    after = [ "nss-lookup.target" ];
+    requires = [ "nss-lookup.target" ];
+  };
+
   # Personal WireGuard via the OCI hub. This stays on a separate subnet/port
   # from the production neocache k3s overlay.
   #  networking.wg-quick.interfaces.personal = {
