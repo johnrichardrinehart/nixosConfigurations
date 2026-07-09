@@ -192,8 +192,14 @@ in
     '';
   };
 
-  services.tailscale.enable = true;
-  networking.firewall.checkReversePath = "loose";
+  services.tailscale = {
+    enable = true;
+    extraSetFlags = [
+      "--accept-dns=true"
+      "--accept-routes=true"
+    ];
+    useRoutingFeatures = "client";
+  };
 
   # WireGuard to neocache k3s server
   networking.wg-quick.interfaces.wg-nc = {
@@ -260,7 +266,7 @@ in
 
     serviceConfig = {
       Type = "oneshot";
-      ExecStart = "${pkgs.tailscale}/bin/tailscale up --accept-routes --accept-dns=false";
+      ExecStart = "${pkgs.tailscale}/bin/tailscale up --accept-routes --accept-dns=true";
       RemainAfterExit = true;
 
       # Prevent blocking boot if network is slow/unavailable
