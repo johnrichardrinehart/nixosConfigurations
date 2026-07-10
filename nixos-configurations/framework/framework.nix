@@ -167,19 +167,15 @@ in
   '';
 
   # Workaround for Thunderbolt DisplayPort tunnel failure after hibernate.
-  # The kernel patch in boot.kernelPatches above should fix this at the root
-  # cause. If hibernate resume still fails, uncomment this to disable TB
-  # power saving (prevents D3cold entry entirely).
-  # boot.extraModprobeConfig = ''
-  #   options thunderbolt power_save=0
-  # '';
+  # This disables Thunderbolt runtime power saving, preventing the controller
+  # from entering D3cold where the DisplayPort tunnel can fail to recover.
+  boot.extraModprobeConfig = ''
+    options thunderbolt power_save=0
+  '';
 
-  # Another option for Thunderbolt/PCIe issues: use kernel-native PCIe port
-  # services instead of firmware (ACPI). This gives the kernel full control
-  # over hotplug, AER, and PME handling, which can help avoid races between
-  # firmware and kernel during suspend/resume. May help if the retry patches
-  # in dev.johnrinehart.thunderbolt-debug aren't sufficient.
-  # boot.kernelParams = [ "pcie_ports=native" ];
+  # Let Linux own PCIe port services (hotplug, AER, PME) instead of relying on
+  # firmware/ACPI handoff. This may avoid resume-time races that leave USB4/TB
+  # DisplayPort tunnels disconnected.
 
   boot.kernelModules = [
     "kvm-intel" # detected automatically
@@ -323,6 +319,7 @@ in
     "resume=/dev/nvme0n1p3"
     "nocompress"
     "mem_sleep_default=deep"
+    "pcie_ports=native"
   ];
 
   boot.resumeDevice = "/dev/nvme0n1p3";
