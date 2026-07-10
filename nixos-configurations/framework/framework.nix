@@ -121,15 +121,47 @@ in
   boot.kernelPackages = pkgs.linuxPackages_latest;
   boot.extraModulePackages = [ config.boot.kernelPackages.v4l2loopback ];
 
-  # Fix Thunderbolt DisplayPort tunnel failures during suspend/hibernate.
-  # See: known_problems/thunderbolt-hibernate-displayport-failure/
-  # Use `tb-debug on` to enable runtime debugging, or set bootVerbose = true
-  # If issues persist, try: options thunderbolt power_save=0
-  # in boot.extraModprobeConfig (disables TB power saving as a workaround).
+  # Instrument the complete USB-C -> Thunderbolt/USB4 -> DP tunnel -> MST ->
+  # DRM path. Run `sudo display-link-debug snapshot failed` immediately after
+  # a failure; use `diagnose`, `dynamic-debug`, and `trace` for focused tests.
+  dev.johnrinehart.external-display.telemetry = {
+    enable = true;
+    verboseKernelLogging = true;
+    persistentJournal = true;
+    snapshotAfterResume = true;
+  };
+
+  # Retry tunnel discovery after monitor hotplug and system resume. Keep only
+  # the laptop's TB root ports, xHCI, and NHI functions out of D3cold/runtime
+  # suspend so this test distinguishes host power-state failures from monitor
+  # deep-sleep/MST wake failures.
+  dev.johnrinehart.external-display.recovery = {
+    enable = true;
+    attempts = 10;
+    delaySeconds = 2;
+    minimumExternalConnectors = 2;
+    powerManagement = {
+      pciDevices = [
+        "0000:00:07.0"
+        "0000:00:07.1"
+        "0000:00:07.2"
+        "0000:00:07.3"
+        "0000:00:0d.0"
+        "0000:00:0d.2"
+        "0000:00:0d.3"
+      ];
+      preventD3Cold = true;
+      disableRuntimeSuspend = true;
+    };
+  };
+
+  # Retain PCI_DEBUG for telemetry, but disable the old broad PCI retry patch:
+  # current failures also occur during hotplug and kernel 7.1 no longer exposes
+  # the thunderbolt.power_save parameter that the earlier workaround assumed.
   dev.johnrinehart.thunderbolt-debug = {
     enable = true;
-    kernelPatches = true; # Apply D3cold/D3hot retry patches
-    bootVerbose = true; # Set true for boot-time verbose logging
+    kernelPatches = false;
+    bootVerbose = false;
   };
 
   # Optimize hibernate resume for faster session interactivity
@@ -164,13 +196,6 @@ in
 
   environment.etc."modules-load.d/v4l2loopback.conf".text = ''
     v4l2loopback
-  '';
-
-  # Workaround for Thunderbolt DisplayPort tunnel failure after hibernate.
-  # This disables Thunderbolt runtime power saving, preventing the controller
-  # from entering D3cold where the DisplayPort tunnel can fail to recover.
-  boot.extraModprobeConfig = ''
-    options thunderbolt power_save=0
   '';
 
   # Let Linux own PCIe port services (hotplug, AER, PME) instead of relying on
