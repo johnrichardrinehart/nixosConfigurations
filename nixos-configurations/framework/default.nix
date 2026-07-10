@@ -60,6 +60,7 @@ in
   dev.johnrinehart.desktop = {
     enable = true;
     variant = "greetd+niri";
+    greetd_niri.fingerprint.enable = true;
   };
 
   # Authenticate before starting Niri so PAM receives the login password and
@@ -107,8 +108,6 @@ in
     enable = true;
     autoSuspend.enable = true;
   };
-
-  services.fprintd.enable = true;
 
   dev.johnrinehart.terminal.filepicker.enable = true;
   environment.systemPackages = [
