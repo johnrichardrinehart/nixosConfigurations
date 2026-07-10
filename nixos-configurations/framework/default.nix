@@ -61,6 +61,31 @@ in
     enable = true;
     variant = "greetd+niri";
   };
+
+  # Authenticate before starting Niri so PAM receives the login password and
+  # can unlock GNOME Keyring before applications such as Brave are launched.
+  # The shared desktop module otherwise starts Niri directly as greetd's
+  # unauthenticated default session.
+  services.greetd = {
+    useTextGreeter = true;
+    settings.default_session = {
+      command = lib.mkForce "${lib.getExe pkgs.tuigreet} --time --remember --user-menu --asterisks --cmd ${lib.getExe' config.programs.niri.package "niri-session"}";
+      user = lib.mkForce "greeter";
+    };
+  };
+
+  # greetd starts its default greeter through this PAM service without running
+  # authentication. Define the account/session phases explicitly; otherwise
+  # Linux-PAM falls back to the deny-all `other` service and tuigreet cannot
+  # start after reboot.
+  security.pam.services.greetd-greeter.text = ''
+    auth required pam_permit.so
+    account required pam_permit.so
+    password required pam_deny.so
+    session required pam_env.so conffile=/etc/pam/environment readenv=0
+    session required pam_unix.so
+    session optional ${pkgs.systemd}/lib/security/pam_systemd.so
+  '';
   dev.johnrinehart.voice-dictation.enable = true;
   dev.johnrinehart.sshSessionLock = {
     enable = true;
