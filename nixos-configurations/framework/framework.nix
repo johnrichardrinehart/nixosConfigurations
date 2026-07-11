@@ -161,6 +161,7 @@ in
   dev.johnrinehart.thunderbolt-debug = {
     enable = true;
     kernelPatches = false;
+    icmFirmwareRescan = true;
     bootVerbose = false;
   };
 
