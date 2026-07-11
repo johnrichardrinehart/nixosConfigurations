@@ -127,11 +127,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1783221248,
-        "narHash": "sha256-ESQnuNHEDChsB4IxoLRhscVahqkDWkTb+qdIz8euYt4=",
+        "lastModified": 1783740085,
+        "narHash": "sha256-qajyHfZY29G2oEQk+uHxmsJcRoBUBXP9maTpFlwP/dI=",
         "owner": "nix-community",
         "repo": "home-manager",
-        "rev": "af2beae5f0fae0a4310cc0e6aef2572f56090353",
+        "rev": "3cd22efe6471dc7365c822bd9ad73a21e55f38fb",
         "type": "github"
       },
       "original": {
@@ -231,11 +231,11 @@
         "wayland-session-supervisor": "wayland-session-supervisor"
       },
       "locked": {
-        "lastModified": 1783788776,
-        "narHash": "sha256-EdM3oh9DPPRbS/P5bNgIUlIpX4kKl9b3JbvBOts+Iuo=",
+        "lastModified": 1783792451,
+        "narHash": "sha256-/xrB6++YH7drRu1rYg0LlndLt6A9SS38Y0IuMwcb3iE=",
         "owner": "johnrichardrinehart",
         "repo": "nixosModules",
-        "rev": "73b438122aa4f1e626099daeb2af4888d92962ec",
+        "rev": "690776c3cdc8a8390c4174bb04d04d3a16dc73a7",
         "type": "github"
       },
       "original": {
