@@ -71,7 +71,7 @@ in
   services.greetd = {
     useTextGreeter = true;
     settings.default_session = {
-      command = lib.mkForce "${lib.getExe pkgs.tuigreet} --time --remember --user-menu --asterisks --cmd ${lib.getExe' config.programs.niri.package "niri-session"}";
+      command = lib.mkForce "${lib.getExe pkgs.tuigreet} --time --remember --user-menu --asterisks --cmd ${config.dev.johnrinehart.desktop.sessionSupervisor.command}";
       user = lib.mkForce "greeter";
     };
   };
