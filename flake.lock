@@ -82,6 +82,28 @@
     },
     "flake-parts_4": {
       "inputs": {
+        "nixpkgs-lib": [
+          "nixosModules",
+          "wayland-session-supervisor",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1782949081,
+        "narHash": "sha256-vp6Y/Grm98ESt6ceOkWiHWyZRDV3J1RID4w+6NWK9yA=",
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "rev": "17c9d6cdfc60c64f4ee8d306f9bc0b4ccb51481e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "type": "github"
+      }
+    },
+    "flake-parts_5": {
+      "inputs": {
         "nixpkgs-lib": "nixpkgs-lib_3"
       },
       "locked": {
@@ -205,14 +227,15 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "sops-nix": "sops-nix"
+        "sops-nix": "sops-nix",
+        "wayland-session-supervisor": "wayland-session-supervisor"
       },
       "locked": {
-        "lastModified": 1783735255,
-        "narHash": "sha256-yeI2wOBTzkJHG8VoJApa2BEHMRpz01cxtp5W8Ah52O0=",
+        "lastModified": 1783780068,
+        "narHash": "sha256-kvlGqnYucY2stld6IoaKrTE8Oho6rip3DpUoiLoSthQ=",
         "owner": "johnrichardrinehart",
         "repo": "nixosModules",
-        "rev": "7a30903ecf430168fed87aa42043766ee450c888",
+        "rev": "e885e2c276c243b7ac8a24193045d62e2c32e6e1",
         "type": "github"
       },
       "original": {
@@ -284,7 +307,7 @@
     },
     "rock5c-nixos": {
       "inputs": {
-        "flake-parts": "flake-parts_4",
+        "flake-parts": "flake-parts_5",
         "nixpkgs": [
           "nixpkgs"
         ]
@@ -353,6 +376,28 @@
       "original": {
         "owner": "mic92",
         "repo": "sops-nix",
+        "type": "github"
+      }
+    },
+    "wayland-session-supervisor": {
+      "inputs": {
+        "flake-parts": "flake-parts_4",
+        "nixpkgs": [
+          "nixosModules",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1783779557,
+        "narHash": "sha256-EZL8fNMsub5eqy/wsPOU5fsENHPtSQsAprM2W+rSQ2k=",
+        "owner": "johnrichardrinehart",
+        "repo": "wayland-session-supervisor",
+        "rev": "d255c836cd741f88b19778ae92f340e98ee6cf81",
+        "type": "github"
+      },
+      "original": {
+        "owner": "johnrichardrinehart",
+        "repo": "wayland-session-supervisor",
         "type": "github"
       }
     }

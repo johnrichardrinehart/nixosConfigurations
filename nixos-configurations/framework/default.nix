@@ -61,6 +61,7 @@ in
     enable = true;
     variant = "greetd+niri";
     greetd_niri.fingerprint.enable = true;
+    sessionSupervisor.enable = true;
   };
 
   # Authenticate before starting Niri so PAM receives the login password and
