@@ -31,7 +31,10 @@ in
   '';
   virtualisation.containers.enable = true;
 
-  users.users.${primaryUser}.extraGroups = [ "input" ];
+  users.users.${primaryUser} = {
+    uid = 1000;
+    extraGroups = [ "input" ];
+  };
 
   # Enable cgroup delegation for the john user's systemd user manager.
   # This is required for running Kubernetes (k3s) inside rootless Podman containers.
@@ -61,20 +64,12 @@ in
     enable = true;
     variant = "greetd+niri";
     greetd_niri.fingerprint.enable = true;
-    sessionSupervisor.enable = true;
   };
 
-  # Authenticate before starting Niri so PAM receives the login password and
-  # can unlock GNOME Keyring before applications such as Brave are launched.
-  # The shared desktop module otherwise starts Niri directly as greetd's
-  # unauthenticated default session.
-  services.greetd = {
-    useTextGreeter = true;
-    settings.default_session = {
-      command = lib.mkForce "${lib.getExe pkgs.tuigreet} --time --remember --user-menu --asterisks --cmd ${config.dev.johnrinehart.desktop.sessionSupervisor.command}";
-      user = lib.mkForce "greeter";
-    };
-  };
+  # The project module replaces greetd's Niri command and restores only after
+  # the login user has authenticated.
+  services.wayland-session-supervisor.enable = true;
+  services.greetd.useTextGreeter = true;
 
   # greetd starts its default greeter through this PAM service without running
   # authentication. Define the account/session phases explicitly; otherwise
