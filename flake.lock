@@ -231,11 +231,11 @@
         "wayland-session-supervisor": "wayland-session-supervisor"
       },
       "locked": {
-        "lastModified": 1783788030,
-        "narHash": "sha256-NN3Zs6uQDyBTdsxidgCYNqL9BQO6JKvFJ6hI1Z6AqpA=",
+        "lastModified": 1783788776,
+        "narHash": "sha256-EdM3oh9DPPRbS/P5bNgIUlIpX4kKl9b3JbvBOts+Iuo=",
         "owner": "johnrichardrinehart",
         "repo": "nixosModules",
-        "rev": "4c8bd7ff7830ab8cab440ceaf3ee8319018b83fc",
+        "rev": "73b438122aa4f1e626099daeb2af4888d92962ec",
         "type": "github"
       },
       "original": {
@@ -388,11 +388,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1783787999,
-        "narHash": "sha256-9xKYIhU5RNfodrBEW+Y1o0CO2CPCtaaeU4r+QjLJq3A=",
+        "lastModified": 1783788753,
+        "narHash": "sha256-HmNfYjc5QoFG3oDDx8u/lDA2dTG1NBH+ygSjCSlkmOU=",
         "owner": "johnrichardrinehart",
         "repo": "wayland-session-supervisor",
-        "rev": "cd8055287b2184cd2bc3b4cffcf493038bd7b23d",
+        "rev": "637d3529955a339351bcf059c88b7de412767b93",
         "type": "github"
       },
       "original": {
