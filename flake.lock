@@ -388,11 +388,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1783886794,
-        "narHash": "sha256-p/AON/KmtQZ+9an6EXiReFTut4bUCkjgcK6WKtTfqIk=",
+        "lastModified": 1783897860,
+        "narHash": "sha256-FWDyT6aSk1haQoK8Kki3VkMjpNlATu6AbIXlK3EYPcI=",
         "owner": "johnrichardrinehart",
         "repo": "wayland-session-supervisor",
-        "rev": "cb7d29de451974892e2045dd933482bdecaab48a",
+        "rev": "f72c40f77fce98edab7108b1ff3e2205b048df69",
         "type": "github"
       },
       "original": {
