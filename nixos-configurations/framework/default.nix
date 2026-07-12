@@ -59,6 +59,11 @@ in
 
   dev.johnrinehart.firmware.framework-ec.features = [ "F9-display-toggle" ];
   dev.johnrinehart.firmware.framework-ec.flashService.enable = true;
+  dev.johnrinehart.hardware.i915 = {
+    enable = true;
+    deviceId = "9a49";
+    checkpointRestore.enable = true;
+  };
 
   dev.johnrinehart.desktop = {
     enable = true;
