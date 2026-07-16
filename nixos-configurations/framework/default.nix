@@ -73,7 +73,10 @@ in
 
   # The project module replaces greetd's Niri command and restores only after
   # the login user has authenticated.
-  services.wayland-session-supervisor.enable = true;
+  services.wayland-session-supervisor = {
+    enable = true;
+    inDomainSeatAuthority = true;
+  };
   services.greetd.useTextGreeter = true;
 
   # greetd starts its default greeter through this PAM service without running
