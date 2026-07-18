@@ -231,11 +231,11 @@
         "wayland-session-supervisor": "wayland-session-supervisor"
       },
       "locked": {
-        "lastModified": 1784332118,
-        "narHash": "sha256-KvG/Hm2wNEx9OEUyLDUddPQEQj/aUGMQNNKXB+J5tN0=",
+        "lastModified": 1784338724,
+        "narHash": "sha256-KURZFnO4AzjdyHKs0NTJ90UUaMA4hYzRlekEPiBB9Bc=",
         "owner": "johnrichardrinehart",
         "repo": "nixosModules",
-        "rev": "62ab9e1abd343b6c697aaf8f1613a5d0137216bd",
+        "rev": "dc7cd0f07059d6ee9827f0c6acf47644a9525fc3",
         "type": "github"
       },
       "original": {
