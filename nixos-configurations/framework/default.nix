@@ -1,5 +1,6 @@
 {
   config,
+  inputs,
   lib,
   pkgs,
   ...
@@ -50,6 +51,19 @@ in
 
   dev.johnrinehart.system.enable = true;
   dev.johnrinehart.repo-manager.daemon.enable = true;
+
+  home-manager.sharedModules = [ inputs.git-ai.homeManagerModules.default ];
+  home-manager.users.${primaryUser} = {
+    programs.git.package = inputs.git-ai.packages.${pkgs.stdenv.hostPlatform.system}.default;
+    programs.git-ai = {
+      enable = true;
+      installHooks = true;
+      settings = {
+        promptStorage = "local";
+        telemetryOss = "off";
+      };
+    };
+  };
 
   dev.johnrinehart.agentTools = {
     enable = true;
