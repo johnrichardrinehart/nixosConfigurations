@@ -91,6 +91,7 @@ in
     session required pam_unix.so
     session optional ${pkgs.systemd}/lib/security/pam_systemd.so
   '';
+  dev.johnrinehart.blink-to-click.enable = true;
   dev.johnrinehart.voice-dictation.enable = true;
   dev.johnrinehart.sshSessionLock = {
     enable = true;
