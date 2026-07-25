@@ -362,10 +362,9 @@ in
   dev.johnrinehart.sound = {
     enable = true;
 
-    # Use PipeWire's software monitor path for mic monitoring so headphones hear
-    # the processed Noise Canceled Microphone instead of the Samson Q9U's raw
-    # hardware direct-monitor feed.
-    micMonitor.enable = true;
+    # Use the Samson Q9U's zero-latency hardware direct monitor without also
+    # routing the processed microphone back through PipeWire.
+    softwareMicMonitor.enable = false;
 
     rnnoise = {
       highpass = {
