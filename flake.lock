@@ -1,8 +1,30 @@
 {
   "nodes": {
-    "display-layout": {
+    "blink-to-click": {
       "inputs": {
         "flake-parts": "flake-parts_2",
+        "nixpkgs": [
+          "nixosModules",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1784752138,
+        "narHash": "sha256-A8lAwZcze9cAzUPJVFJKUOMDNWfiMLSi0Pj8HrCBX+U=",
+        "owner": "johnrichardrinehart",
+        "repo": "blink-to-click",
+        "rev": "0e63f43707d383383262891f6161da4b4bcd6c99",
+        "type": "github"
+      },
+      "original": {
+        "owner": "johnrichardrinehart",
+        "repo": "blink-to-click",
+        "type": "github"
+      }
+    },
+    "display-layout": {
+      "inputs": {
+        "flake-parts": "flake-parts_3",
         "nixpkgs": [
           "nixosModules",
           "nixpkgs"
@@ -44,7 +66,7 @@
       "inputs": {
         "nixpkgs-lib": [
           "nixosModules",
-          "display-layout",
+          "blink-to-click",
           "nixpkgs"
         ]
       },
@@ -64,7 +86,11 @@
     },
     "flake-parts_3": {
       "inputs": {
-        "nixpkgs-lib": "nixpkgs-lib_2"
+        "nixpkgs-lib": [
+          "nixosModules",
+          "display-layout",
+          "nixpkgs"
+        ]
       },
       "locked": {
         "lastModified": 1782949081,
@@ -81,6 +107,24 @@
       }
     },
     "flake-parts_4": {
+      "inputs": {
+        "nixpkgs-lib": "nixpkgs-lib_2"
+      },
+      "locked": {
+        "lastModified": 1782949081,
+        "narHash": "sha256-vp6Y/Grm98ESt6ceOkWiHWyZRDV3J1RID4w+6NWK9yA=",
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "rev": "17c9d6cdfc60c64f4ee8d306f9bc0b4ccb51481e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "type": "github"
+      }
+    },
+    "flake-parts_5": {
       "inputs": {
         "nixpkgs-lib": "nixpkgs-lib_3"
       },
@@ -202,22 +246,24 @@
     },
     "nixosModules": {
       "inputs": {
+        "blink-to-click": "blink-to-click",
         "display-layout": "display-layout",
-        "flake-parts": "flake-parts_3",
+        "flake-parts": "flake-parts_4",
         "home-manager": "home-manager_2",
         "nixpkgs": "nixpkgs",
         "sops-nix": "sops-nix"
       },
       "locked": {
-        "lastModified": 1785080593,
-        "narHash": "sha256-1ScSbi/xOG1nNslDIa3qecBsmk+w+vnVOyRrWIecv2k=",
+        "lastModified": 1785080607,
+        "narHash": "sha256-E9W3IwOiqTO3/2tTGxS4pmN5718Sefd7YxgJYpr4744=",
         "owner": "johnrichardrinehart",
         "repo": "nixosModules",
-        "rev": "de418cdd39f4207da6ad7e93bf54da13fea5b3e5",
+        "rev": "af58dac04e76a129162407b20bab737bd9d820e9",
         "type": "github"
       },
       "original": {
         "owner": "johnrichardrinehart",
+        "ref": "blink-to-click",
         "repo": "nixosModules",
         "type": "github"
       }
@@ -285,7 +331,7 @@
     },
     "rock5c-nixos": {
       "inputs": {
-        "flake-parts": "flake-parts_4",
+        "flake-parts": "flake-parts_5",
         "nixpkgs": [
           "nixosModules",
           "nixpkgs"

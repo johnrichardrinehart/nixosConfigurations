@@ -4,7 +4,7 @@
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
 
-    nixosModules.url = "github:johnrichardrinehart/nixosModules";
+    nixosModules.url = "github:johnrichardrinehart/nixosModules?ref=blink-to-click";
 
     home-manager = {
       url = "github:nix-community/home-manager/release-26.05";
