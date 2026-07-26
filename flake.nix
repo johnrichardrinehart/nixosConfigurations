@@ -2,39 +2,36 @@
   description = "JohnOS NixOS system configurations";
 
   inputs = {
-    nixpkgs.url = "github:johnrichardrinehart/nixpkgs?ref=rock-5c-nixos-26.05";
-
     flake-parts.url = "github:hercules-ci/flake-parts";
 
-    nixosModules = {
-      url = "github:johnrichardrinehart/nixosModules";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    nixosModules.url = "github:johnrichardrinehart/nixosModules";
+
+    nixpkgs.follows = "nixosModules/nixpkgs";
 
     home-manager = {
       url = "github:nix-community/home-manager/release-26.05";
       flake = true;
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nixpkgs.follows = "nixosModules/nixpkgs";
     };
 
     nixos-hardware = {
       url = "github:NixOS/nixos-hardware";
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nixpkgs.follows = "nixosModules/nixpkgs";
     };
 
     nixos-generators = {
       url = "github:nix-community/nixos-generators";
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nixpkgs.follows = "nixosModules/nixpkgs";
     };
 
     rock5c-nixos = {
       url = "github:johnrichardrinehart/rock5c-nixos";
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nixpkgs.follows = "nixosModules/nixpkgs";
     };
 
     sops-nix = {
       url = "github:mic92/sops-nix";
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nixpkgs.follows = "nixosModules/nixpkgs";
     };
   };
 
@@ -59,10 +56,7 @@
             perSystem =
               { system, ... }:
               let
-                pkgs = import inputs.nixpkgs {
-                  inherit system;
-                  overlays = [ inputs.nixosModules.overlays.default ];
-                };
+                pkgs = inputs.nixosModules.legacyPackages.${system};
                 treefmtEval = inputs."treefmt-nix".lib.evalModule pkgs ./treefmt.nix;
                 preCommitCheck = inputs."git-hooks".lib.${system}.run {
                   src = ./.;
