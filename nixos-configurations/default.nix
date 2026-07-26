@@ -1,6 +1,6 @@
 inputs:
 let
-  inherit (inputs.nixpkgs) lib;
+  inherit (inputs.nixosModules) lib;
   johnosModules = inputs.nixosModules;
 in
 lib.mapAttrs (
