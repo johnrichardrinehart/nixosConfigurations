@@ -4,7 +4,7 @@
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
 
-    nixosModules.url = "github:johnrichardrinehart/nixosModules";
+    nixosModules.url = "github:johnrichardrinehart/nixosModules?ref=wayland-session-supervisor";
 
     home-manager = {
       url = "github:nix-community/home-manager/release-26.05";

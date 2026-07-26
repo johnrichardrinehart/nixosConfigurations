@@ -82,6 +82,28 @@
     },
     "flake-parts_4": {
       "inputs": {
+        "nixpkgs-lib": [
+          "nixosModules",
+          "wayland-session-supervisor",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1782949081,
+        "narHash": "sha256-vp6Y/Grm98ESt6ceOkWiHWyZRDV3J1RID4w+6NWK9yA=",
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "rev": "17c9d6cdfc60c64f4ee8d306f9bc0b4ccb51481e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "type": "github"
+      }
+    },
+    "flake-parts_5": {
+      "inputs": {
         "nixpkgs-lib": "nixpkgs-lib_3"
       },
       "locked": {
@@ -206,18 +228,20 @@
         "flake-parts": "flake-parts_3",
         "home-manager": "home-manager_2",
         "nixpkgs": "nixpkgs",
-        "sops-nix": "sops-nix"
+        "sops-nix": "sops-nix",
+        "wayland-session-supervisor": "wayland-session-supervisor"
       },
       "locked": {
-        "lastModified": 1785080593,
-        "narHash": "sha256-1ScSbi/xOG1nNslDIa3qecBsmk+w+vnVOyRrWIecv2k=",
+        "lastModified": 1785080834,
+        "narHash": "sha256-wS4Kz0uORrZZXxHaINWKl9ddvlKcmdh/84ITVl9VM4U=",
         "owner": "johnrichardrinehart",
         "repo": "nixosModules",
-        "rev": "de418cdd39f4207da6ad7e93bf54da13fea5b3e5",
+        "rev": "ba1eebe0776cac6251c0340fea3f9268c1ddfc22",
         "type": "github"
       },
       "original": {
         "owner": "johnrichardrinehart",
+        "ref": "wayland-session-supervisor",
         "repo": "nixosModules",
         "type": "github"
       }
@@ -285,7 +309,7 @@
     },
     "rock5c-nixos": {
       "inputs": {
-        "flake-parts": "flake-parts_4",
+        "flake-parts": "flake-parts_5",
         "nixpkgs": [
           "nixosModules",
           "nixpkgs"
@@ -355,6 +379,28 @@
       "original": {
         "owner": "mic92",
         "repo": "sops-nix",
+        "type": "github"
+      }
+    },
+    "wayland-session-supervisor": {
+      "inputs": {
+        "flake-parts": "flake-parts_4",
+        "nixpkgs": [
+          "nixosModules",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1784460502,
+        "narHash": "sha256-lFAxV4TmrJR0HobgEXvtuur+JWvAmlx5Ls4yvAun/lk=",
+        "owner": "johnrichardrinehart",
+        "repo": "wayland-session-supervisor",
+        "rev": "610fe5afec56d2a4edbeb9eaf151dd4040b1ffec",
+        "type": "github"
+      },
+      "original": {
+        "owner": "johnrichardrinehart",
+        "repo": "wayland-session-supervisor",
         "type": "github"
       }
     }
