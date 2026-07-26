@@ -240,13 +240,19 @@ in
     ];
   };
 
-  # The endpoint is a DNS name, and network-online.target can be reached before
-  # nscd/resolvconf finish restarting during nixos-rebuild switch. Order after
-  # host name lookup services, but keep the dependency soft so a transient nscd
-  # start-limit hit does not also fail the WireGuard unit.
+  # A switch can reach nss-lookup.target before the configured DNS server answers.
   systemd.services.wg-quick-wg-nc = {
     after = [ "nss-lookup.target" ];
     wants = [ "nss-lookup.target" ];
+    preStart = ''
+      for attempt in {1..30}; do
+        ${pkgs.getent}/bin/getent ahosts k8s.neocache.io >/dev/null && exit 0
+        sleep 1
+      done
+
+      echo "Failed to resolve k8s.neocache.io after 30 seconds" >&2
+      exit 1
+    '';
   };
 
   # Tailscale/openresolv can update DNS several times during early boot, which
