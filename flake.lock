@@ -82,6 +82,28 @@
     },
     "flake-parts_4": {
       "inputs": {
+        "nixpkgs-lib": [
+          "nixosModules",
+          "git-meld",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1782949081,
+        "narHash": "sha256-vp6Y/Grm98ESt6ceOkWiHWyZRDV3J1RID4w+6NWK9yA=",
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "rev": "17c9d6cdfc60c64f4ee8d306f9bc0b4ccb51481e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "type": "github"
+      }
+    },
+    "flake-parts_5": {
+      "inputs": {
         "nixpkgs-lib": "nixpkgs-lib_3"
       },
       "locked": {
@@ -95,6 +117,28 @@
       "original": {
         "owner": "hercules-ci",
         "repo": "flake-parts",
+        "type": "github"
+      }
+    },
+    "git-meld": {
+      "inputs": {
+        "flake-parts": "flake-parts_4",
+        "nixpkgs": [
+          "nixosModules",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1785104366,
+        "narHash": "sha256-NVJdPpSC9nVj38MzCr11deKOQP9wIehhcTsot0FtCiY=",
+        "owner": "johnrichardrinehart",
+        "repo": "git-meld",
+        "rev": "70f093119137502d466433abb38f6d28fe751e17",
+        "type": "github"
+      },
+      "original": {
+        "owner": "johnrichardrinehart",
+        "repo": "git-meld",
         "type": "github"
       }
     },
@@ -204,16 +248,17 @@
       "inputs": {
         "display-layout": "display-layout",
         "flake-parts": "flake-parts_3",
+        "git-meld": "git-meld",
         "home-manager": "home-manager_2",
         "nixpkgs": "nixpkgs",
         "sops-nix": "sops-nix"
       },
       "locked": {
-        "lastModified": 1785154426,
-        "narHash": "sha256-S/YtvsKxtqIUyRNRNx9bnBaChfkhsq/HiA0S0RQUGoY=",
+        "lastModified": 1785156743,
+        "narHash": "sha256-PgQ1j+A2QKGvnRjfdeFcAZ7fnXZHM6W7fl3ddrY6QoQ=",
         "owner": "johnrichardrinehart",
         "repo": "nixosModules",
-        "rev": "0fab8dc99075c093e2d0b0d060f2d10e6714c6e3",
+        "rev": "f5d8a97fb4635954baf9ba871499ccb957035cee",
         "type": "github"
       },
       "original": {
@@ -285,7 +330,7 @@
     },
     "rock5c-nixos": {
       "inputs": {
-        "flake-parts": "flake-parts_4",
+        "flake-parts": "flake-parts_5",
         "nixpkgs": [
           "nixosModules",
           "nixpkgs"
