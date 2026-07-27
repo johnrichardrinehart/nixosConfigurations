@@ -18,6 +18,7 @@ in
   ];
 
   dev.johnrinehart.droidcam.enable = false; # TODO: broken
+  dev.johnrinehart.programs.git.meld.enable = true;
   dev.johnrinehart.auto-suspend = {
     lowLevel = 30;
     criticalLevel = 20;
