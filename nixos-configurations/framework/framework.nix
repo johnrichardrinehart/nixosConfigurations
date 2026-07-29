@@ -55,7 +55,7 @@ in
         sshUser = primaryUser;
         protocol = "ssh-ng";
         system = "x86_64-linux";
-        maxJobs = 12;
+        maxJobs = 4;
         supportedFeatures = [
           "benchmark"
           "big-parallel"
