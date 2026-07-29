@@ -392,11 +392,12 @@ in
         frequency = 210.0;
       };
       dualMonoOutput.enable = true;
-      deepfilter = {
-        enable = true;
-        attenuationLimit = 60.0;
-        postFilterBeta = 0.02;
-      };
+      vadThreshold = 70.0;
+      vadGracePeriod = 300.0;
+      retroactiveVadGrace = 100.0;
+      # RNNoise provides best-effort keyboard attenuation without the
+      # real-time underruns caused by the heavier DeepFilterNet stage.
+      deepfilter.enable = false;
       inputRules = [
         {
           matches = [
