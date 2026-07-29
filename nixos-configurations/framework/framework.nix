@@ -19,6 +19,17 @@ in
 
   dev.johnrinehart.droidcam.enable = false; # TODO: broken
   dev.johnrinehart.programs.git.meld.enable = true;
+
+  home-manager.users.${primaryUser} = {
+    programs.kitty.extraConfig = lib.mkAfter ''
+      mouse_map ctrl+left release grabbed,ungrabbed mouse_handle_click link
+    '';
+    xdg.configFile."kitty/open-actions.conf".text = ''
+      protocol http,https
+      action launch --type=background ${lib.getExe' pkgs.wl-clipboard "wl-copy"} -- $URL
+    '';
+  };
+
   dev.johnrinehart.auto-suspend = {
     lowLevel = 30;
     criticalLevel = 20;
