@@ -1,11 +1,13 @@
 {
   config,
+  inputs,
   lib,
   pkgs,
   ...
 }:
 let
   primaryUser = config.dev.johnrinehart.users.primary;
+  breakpoint = inputs.nixosModules.lib.daylightDisplay.breakpoint;
 in
 {
   imports = [ ./framework.nix ];
@@ -62,7 +64,37 @@ in
     variant = "greetd+niri";
     greetd_niri.fingerprint.enable = true;
     obsidian.enable = true;
-    daylightDisplay.enable = true;
+    daylightDisplay = {
+      enable = true;
+      breakpoints = [
+        (breakpoint "sunrise" (-30) 60 3500)
+        (breakpoint "sunrise" (-25) 63 3750)
+        (breakpoint "sunrise" (-20) 67 4000)
+        (breakpoint "sunrise" (-15) 70 4250)
+        (breakpoint "sunrise" (-10) 73 4500)
+        (breakpoint "sunrise" (-5) 77 4750)
+        (breakpoint "sunrise" 0 80 5000)
+        (breakpoint "sunrise" 5 83 5250)
+        (breakpoint "sunrise" 10 87 5500)
+        (breakpoint "sunrise" 15 90 5750)
+        (breakpoint "sunrise" 20 93 6000)
+        (breakpoint "sunrise" 25 97 6250)
+        (breakpoint "sunrise" 30 100 6500)
+        (breakpoint "sunset" (-30) 100 6500)
+        (breakpoint "sunset" (-25) 97 6250)
+        (breakpoint "sunset" (-20) 93 6000)
+        (breakpoint "sunset" (-15) 90 5750)
+        (breakpoint "sunset" (-10) 87 5500)
+        (breakpoint "sunset" (-5) 83 5250)
+        (breakpoint "sunset" 0 80 5000)
+        (breakpoint "sunset" 5 77 4750)
+        (breakpoint "sunset" 10 73 4500)
+        (breakpoint "sunset" 15 70 4250)
+        (breakpoint "sunset" 20 67 4000)
+        (breakpoint "sunset" 25 63 3750)
+        (breakpoint "sunset" 30 60 3500)
+      ];
+    };
   };
 
   # Authenticate before starting Niri so PAM receives the login password and
