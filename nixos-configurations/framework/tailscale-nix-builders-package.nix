@@ -2,6 +2,7 @@
   writeShellApplication,
   bash,
   coreutils,
+  diffutils,
   findutils,
   gawk,
   jq,
@@ -16,6 +17,7 @@ writeShellApplication {
   name = "tailscale-nix-builders";
   runtimeInputs = [
     coreutils
+    diffutils
     findutils
     gawk
     jq

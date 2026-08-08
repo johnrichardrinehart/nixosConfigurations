@@ -7,9 +7,10 @@
 }:
 let
   primaryUser = config.dev.johnrinehart.users.primary;
-  stateDirectory = "tailscale-nix-builders";
-  statePath = "/var/lib/${stateDirectory}";
-  machinesFile = "/etc/nix/machines";
+  primaryGroup = config.users.users.${primaryUser}.group;
+  stateDirectory = "tailscale-nix-builders-user";
+  statePath = "/home/${primaryUser}/.local/state/${stateDirectory}";
+  machinesFile = "${statePath}/machines";
   sshKey = "/home/${primaryUser}/.ssh/id_ed25519_neocache_cloud_ci_builder";
   maxJobs = 4;
   builderUserIds = [
@@ -55,47 +56,39 @@ in
     settings.builders = "@${machinesFile}";
   };
 
+  # Bootstrap the user-owned state directory before systemd starts the user unit.
+  # This also repairs ownership left by the former system service.
   systemd.tmpfiles.rules = [
-    "d /etc/nix 0755 root root -"
+    "d ${statePath} 0700 ${primaryUser} ${primaryGroup} -"
+    "z ${statePath} 0700 ${primaryUser} ${primaryGroup} -"
   ];
 
-  systemd.services.tailscale-nix-builders = {
+  systemd.user.services.tailscale-nix-builders = {
     description = "Discover reachable Nix builders shared through Tailscale";
-    wantedBy = [ "multi-user.target" ];
-    wants = [
-      "network-online.target"
-      "tailscaled.service"
-    ];
-    after = [
-      "network-online.target"
-      "tailscaled.service"
-    ];
+    wantedBy = [ "default.target" ];
+    after = [ "network-online.target" ];
     serviceConfig = {
       Type = "oneshot";
       ExecStart = utils.escapeSystemdExecArgs generatorArgs;
       TimeoutStartSec = "50s";
-
-      StateDirectory = stateDirectory;
-      StateDirectoryMode = "0700";
       UMask = "0077";
-
-      CapabilityBoundingSet = "";
       NoNewPrivileges = true;
       PrivateDevices = true;
       PrivateTmp = true;
       ProtectClock = true;
       ProtectControlGroups = true;
-      ProtectHome = "read-only";
+
       ProtectKernelLogs = true;
       ProtectKernelModules = true;
       ProtectKernelTunables = true;
       ProtectSystem = "strict";
-      ReadWritePaths = [ "/etc/nix" ];
+      # The parent must exist before systemd creates the mount namespace.
+      ReadWritePaths = [ "/home/${primaryUser}/.local/state" ];
       RestrictSUIDSGID = true;
     };
   };
 
-  systemd.timers.tailscale-nix-builders = {
+  systemd.user.timers.tailscale-nix-builders = {
     description = "Refresh Tailscale Nix builders every 60 seconds";
     wantedBy = [ "timers.target" ];
     timerConfig = {
