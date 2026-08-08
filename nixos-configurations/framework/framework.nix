@@ -133,6 +133,13 @@ in
   ## Below v4l2loopback stuff stolen from https://gist.github.com/TheSirC/93130f70cc280cdcdff89faf8d4e98ab
   # Extra kernel modules
   boot.kernelPackages = pkgs.linuxPackages_latest;
+  boot.kernelPatches = [
+    {
+      name = "enable-ikheaders";
+      patch = null;
+      structuredExtraConfig.IKHEADERS = lib.kernel.yes;
+    }
+  ];
   boot.extraModulePackages = [ config.boot.kernelPackages.v4l2loopback ];
 
   # Instrument the complete USB-C -> Thunderbolt/USB4 -> DP tunnel -> MST ->
