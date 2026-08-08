@@ -46,29 +46,6 @@ in
       max-free = 10 * 1024 * 1024 * 1024;
       trusted-users = [ primaryUser ];
     };
-
-    distributedBuilds = true;
-
-    buildMachines = [
-      {
-        hostName = "100.74.54.40";
-        sshUser = primaryUser;
-        protocol = "ssh-ng";
-        system = "x86_64-linux";
-        maxJobs = 4;
-        supportedFeatures = [
-          "benchmark"
-          "big-parallel"
-          "gccarch-alderlake"
-          "gccarch-x86_64-v3"
-          "gccarch-znver1"
-          "gccarch-znver3"
-          "kvm"
-          "nixos-test"
-        ];
-        publicHostKey = "c3NoLWVkMjU1MTkgQUFBQUMzTnphQzFsWkRJMU5URTVBQUFBSUNuYlFKakdjYUExS1N3LzZSbnFxZzNlNGxwNFJtSFVKb1dpR3NXQk5lNVUgcm9vdEBuaXhvcwo=";
-      }
-    ];
   };
 
   boot.supportedFilesystems = [

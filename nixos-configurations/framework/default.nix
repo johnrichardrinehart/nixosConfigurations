@@ -10,7 +10,10 @@ let
   breakpoint = inputs.nixosModules.lib.daylightDisplay.breakpoint;
 in
 {
-  imports = [ ./framework.nix ];
+  imports = [
+    ./framework.nix
+    ./tailscale-nix-builders.nix
+  ];
 
   nixpkgs.hostPlatform = "x86_64-linux";
   documentation.nixos.enable = false;
