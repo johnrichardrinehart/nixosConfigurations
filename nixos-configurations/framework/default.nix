@@ -66,6 +66,7 @@ in
     enable = true;
     variant = "greetd+niri";
     greetd_niri.fingerprint.enable = true;
+    greetd_niri.waybar.systemd.enable = true;
     obsidian.enable = true;
     daylightDisplay = {
       enable = true;
