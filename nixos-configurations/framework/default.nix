@@ -148,6 +148,7 @@ in
   };
 
   dev.johnrinehart.terminal.filepicker.enable = true;
+  dev.johnrinehart.users.terminalEmulator = pkgs.dev.johnrinehart.monstar;
   environment.systemPackages = [
     pkgs.intel-gpu-tools
   ];
