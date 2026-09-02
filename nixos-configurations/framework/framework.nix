@@ -138,6 +138,8 @@ in
     attempts = 10;
     delaySeconds = 2;
     minimumExternalConnectors = 2;
+    reprobeControllers = true;
+    quiesceStuckUsbPorts = true;
     powerManagement = {
       pciDevices = [
         "0000:00:07.0"
@@ -160,6 +162,7 @@ in
     enable = true;
     kernelPatches = false;
     icmFirmwareRescan = true;
+    recoverFailedSuspend = true;
     bootVerbose = false;
   };
 
