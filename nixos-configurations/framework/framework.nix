@@ -11,6 +11,7 @@
 }:
 let
   primaryUser = config.dev.johnrinehart.users.primary;
+  kittyIntegrationEnabled = config.dev.johnrinehart.users.terminalEmulator.integrations.kitty.enable;
 in
 {
   imports = [
@@ -20,7 +21,7 @@ in
   dev.johnrinehart.droidcam.enable = false; # TODO: broken
   dev.johnrinehart.programs.git.meld.enable = true;
 
-  home-manager.users.${primaryUser} = {
+  home-manager.users.${primaryUser} = lib.mkIf kittyIntegrationEnabled {
     programs.kitty.extraConfig = lib.mkAfter ''
       mouse_map ctrl+left release grabbed,ungrabbed mouse_handle_click link
     '';
