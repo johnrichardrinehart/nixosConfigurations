@@ -67,6 +67,14 @@ in
     variant = "greetd+niri";
     greetd_niri.fingerprint.enable = true;
     greetd_niri.waybar.systemd.enable = true;
+    greetd_niri.niri.extraKeybindings = ''
+      Mod+O repeat=false {
+          toggle-overview all-outputs=false
+      }
+      Mod+Shift+O repeat=false {
+          toggle-overview
+      }
+    '';
     obsidian.enable = true;
     daylightDisplay = {
       enable = true;
