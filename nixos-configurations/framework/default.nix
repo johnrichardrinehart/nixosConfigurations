@@ -136,7 +136,7 @@ in
   };
 
   dev.johnrinehart.packages.shell.enable = true;
-  dev.johnrinehart.kitkat-rs.variant = "fastest";
+  dev.johnrinehart.kitkat-rs.variant = "faster";
   dev.johnrinehart.packages.editors.enable = true;
   dev.johnrinehart.packages.gui.enable = true;
   dev.johnrinehart.packages.devops.enable = true;
