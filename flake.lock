@@ -194,11 +194,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788488780,
-        "narHash": "sha256-4FvQSriGEh1TFeGv99p9YCw3zE+UZIQmXcz9LriH8Mo=",
+        "lastModified": 1788490283,
+        "narHash": "sha256-lzoI5ghMitdBkdjHN54PsNQd2UY0nxyNDTn/bc5nn8U=",
         "owner": "johnrichardrinehart",
         "repo": "kitkat-rs",
-        "rev": "e8c39f7afd511b82ca7696e91712d908b3ec8a77",
+        "rev": "b6a0e61cecfd32cc3cd104ce89b824155ab3d385",
         "type": "github"
       },
       "original": {
@@ -298,11 +298,11 @@
         "sops-nix": "sops-nix"
       },
       "locked": {
-        "lastModified": 1788488909,
-        "narHash": "sha256-tvRdD9bUOXs/caBqBE5EtQn69wGLluDrjbPXQCoko0k=",
+        "lastModified": 1788490333,
+        "narHash": "sha256-1w2nwVdKp2T+VrLnxlq4LISBn9omxwTZi9shno5G4rg=",
         "owner": "johnrichardrinehart",
         "repo": "nixosModules",
-        "rev": "8ff5b981378cf4a7cf2cac99a86d170224b05e45",
+        "rev": "b56b1ac01700b3ace11718a52bde46a39a06d835",
         "type": "github"
       },
       "original": {
