@@ -27,11 +27,11 @@
         "nixpkgs-lib": "nixpkgs-lib"
       },
       "locked": {
-        "lastModified": 1788306937,
-        "narHash": "sha256-lbrI1UYVpFgKSsyrU9oeF7FHfnu8nLD9ja0ou9f2rxk=",
+        "lastModified": 1788450739,
+        "narHash": "sha256-glZLQlzIn1fXH6PazR2iUmTo7kzzyYSshrWhLS9TqCU=",
         "owner": "hercules-ci",
         "repo": "flake-parts",
-        "rev": "f16b25b8c3d2809b87925d0b76652d7821a75c68",
+        "rev": "31729ca8cbdb4fa927b34e5f4353e6a83f39e993",
         "type": "github"
       },
       "original": {
@@ -186,6 +186,27 @@
         "type": "github"
       }
     },
+    "kitkat-rs": {
+      "inputs": {
+        "nixpkgs": [
+          "nixosModules",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1788488780,
+        "narHash": "sha256-4FvQSriGEh1TFeGv99p9YCw3zE+UZIQmXcz9LriH8Mo=",
+        "owner": "johnrichardrinehart",
+        "repo": "kitkat-rs",
+        "rev": "e8c39f7afd511b82ca7696e91712d908b3ec8a77",
+        "type": "github"
+      },
+      "original": {
+        "owner": "johnrichardrinehart",
+        "repo": "kitkat-rs",
+        "type": "github"
+      }
+    },
     "monstar": {
       "inputs": {
         "nixpkgs": [
@@ -271,16 +292,17 @@
         "flake-parts": "flake-parts_3",
         "git-meld": "git-meld",
         "home-manager": "home-manager_2",
+        "kitkat-rs": "kitkat-rs",
         "monstar": "monstar",
         "nixpkgs": "nixpkgs",
         "sops-nix": "sops-nix"
       },
       "locked": {
-        "lastModified": 1788479479,
-        "narHash": "sha256-gDMRiRMjl9i+NQZt9o+QQTCCXjeVm7GVx+xpodRZq2I=",
+        "lastModified": 1788488909,
+        "narHash": "sha256-tvRdD9bUOXs/caBqBE5EtQn69wGLluDrjbPXQCoko0k=",
         "owner": "johnrichardrinehart",
         "repo": "nixosModules",
-        "rev": "52a806d772ef19fd6e2f9886e4f2dfd96f06ebcb",
+        "rev": "8ff5b981378cf4a7cf2cac99a86d170224b05e45",
         "type": "github"
       },
       "original": {
