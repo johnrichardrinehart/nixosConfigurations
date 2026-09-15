@@ -1,5 +1,25 @@
 {
   "nodes": {
+    "disko": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1781152676,
+        "narHash": "sha256-RxWs5ND31KzTG7wvMM+PMfUjyNpmIEr999lqNARaM5o=",
+        "owner": "nix-community",
+        "repo": "disko",
+        "rev": "ff8702b4de27f72b4c78573dfb89ec74e36abdf1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "disko",
+        "type": "github"
+      }
+    },
     "display-layout": {
       "inputs": {
         "flake-parts": "flake-parts_2",
@@ -103,6 +123,28 @@
       }
     },
     "flake-parts_5": {
+      "inputs": {
+        "nixpkgs-lib": [
+          "nixosModules",
+          "repo-manager",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1778716662,
+        "narHash": "sha256-m1Yf0wZ8j1OHjTc2UwHwyQRSnNeSgLJOd7q5Y45hzi4=",
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "rev": "f7c1a2d347e4c52d5fb8d10cb4d94b5884e546fb",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "type": "github"
+      }
+    },
+    "flake-parts_6": {
       "inputs": {
         "nixpkgs-lib": "nixpkgs-lib_3"
       },
@@ -298,14 +340,15 @@
         "nixpkgs": [
           "nixpkgs"
         ],
+        "repo-manager": "repo-manager",
         "sops-nix": "sops-nix"
       },
       "locked": {
-        "lastModified": 1789505168,
-        "narHash": "sha256-ZrlDjcqkpsUUIjYc+KuI5QlM34f1IgsrA+twObbFGnQ=",
+        "lastModified": 1789567134,
+        "narHash": "sha256-de6slRqeO6+A3iGMJIR3KtS5vSELnm5b5DyN4KIY+vs=",
         "owner": "johnrichardrinehart",
         "repo": "nixosModules",
-        "rev": "58b345a3c18f8e4ca0977b690ee10f4e84028f43",
+        "rev": "b115322ad4c24d825fa2494b0082124e38c9d0da",
         "type": "github"
       },
       "original": {
@@ -375,9 +418,33 @@
         "type": "github"
       }
     },
-    "rock5c-nixos": {
+    "repo-manager": {
       "inputs": {
         "flake-parts": "flake-parts_5",
+        "nixpkgs": [
+          "nixosModules",
+          "nixpkgs"
+        ],
+        "rust-overlay": "rust-overlay"
+      },
+      "locked": {
+        "lastModified": 1788489483,
+        "narHash": "sha256-mKZBeL892eHHJgtCYm3krOh2tq2vPPfJxLg1QLUu5Tk=",
+        "owner": "johnrichardrinehart",
+        "repo": "repo-manager",
+        "rev": "4660c4327b830d50681b70ba6ba8e027ac56769c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "johnrichardrinehart",
+        "repo": "repo-manager",
+        "rev": "4660c4327b830d50681b70ba6ba8e027ac56769c",
+        "type": "github"
+      }
+    },
+    "rock5c-nixos": {
+      "inputs": {
+        "flake-parts": "flake-parts_6",
         "nixpkgs": [
           "nixosModules",
           "nixpkgs"
@@ -399,6 +466,7 @@
     },
     "root": {
       "inputs": {
+        "disko": "disko",
         "flake-parts": "flake-parts",
         "home-manager": "home-manager",
         "nixos-generators": "nixos-generators",
@@ -407,6 +475,28 @@
         "nixpkgs": "nixpkgs",
         "rock5c-nixos": "rock5c-nixos",
         "sops-nix": "sops-nix_2"
+      }
+    },
+    "rust-overlay": {
+      "inputs": {
+        "nixpkgs": [
+          "nixosModules",
+          "repo-manager",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1778815121,
+        "narHash": "sha256-xlhD+1NVJbhrUUM2usRHW6iKWTXP2uw2Fo6sWJmLg8g=",
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "rev": "017351829a9356423afd2cca0dde9b63346c8ab3",
+        "type": "github"
+      },
+      "original": {
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "type": "github"
       }
     },
     "sops-nix": {

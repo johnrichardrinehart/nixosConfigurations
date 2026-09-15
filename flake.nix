@@ -3,6 +3,10 @@
 
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
+    disko = {
+      url = "github:nix-community/disko";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
 
     nixosModules.url = "github:johnrichardrinehart/nixosModules";
     nixosModules.inputs.nixpkgs.follows = "nixpkgs";
@@ -94,15 +98,27 @@
 
       flake =
         let
-          guestImage = inputs.self.nixosConfigurations.mbp-apple-silicon.config.system.build.images.raw-efi;
-          guestImageFile = guestImage.passthru.config.image.filePath;
-          darwinPkgs = import inputs.nixpkgs { system = "aarch64-darwin"; };
-          mbpAppleSiliconVm = darwinPkgs.callPackage ./packages/mbp-apple-silicon-vm.nix {
-            inherit guestImage guestImageFile;
+          aarch64DarwinPkgs = import inputs.nixpkgs { system = "aarch64-darwin"; };
+          bootstrapIso = aarch64DarwinPkgs.fetchurl {
+            url = "https://releases.nixos.org/nixos/unstable/nixos-26.11pre1073009.ef34387ddd75/nixos-minimal-26.11pre1073009.ef34387ddd75-aarch64-linux.iso";
+            hash = "sha256-0ObLuRcYGcsfF0SCV9i+NjZVImGvr1EFX8JH+4e5u7M=";
+          };
+          guestFlake =
+            if inputs.self ? rev then
+              "github:johnrichardrinehart/nixosConfigurations/${inputs.self.rev}"
+            else
+              "github:johnrichardrinehart/nixosConfigurations/main";
+          mbpAppleSiliconVm = aarch64DarwinPkgs.callPackage ./packages/mbp-apple-silicon-vm.nix {
+            inherit bootstrapIso guestFlake;
           };
         in
         {
-          nixosConfigurations = import ./nixos-configurations inputs;
+          nixosConfigurations = (import ./nixos-configurations inputs) // {
+            mbp-apple-silicon-bootstrap = inputs.nixosModules.lib.nixosSystem {
+              modules = [ ./nixos-configurations/mbp-apple-silicon/bootstrap.nix ];
+              specialArgs = { inherit inputs; };
+            };
+          };
 
           nixosModules = {
             mbp-intel-silicon = {
