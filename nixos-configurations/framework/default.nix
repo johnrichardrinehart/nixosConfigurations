@@ -67,6 +67,28 @@ in
     variant = "greetd+niri";
     greetd_niri.fingerprint.enable = true;
     greetd_niri.waybar.systemd.enable = true;
+    greetd_niri.niri.extraConfig = ''
+      debug {
+          // Work around Framework/Thunderbolt display resume cases where a docked
+          // external monitor remains DRM-connected but disabled and missing from
+          // `niri msg outputs`.
+          force-disable-connectors-on-resume
+      }
+      output "Dell Inc. DELL U3225QE 6WS9B84" {
+          mode "3840x2160@59.997"
+          position x=0 y=0
+          scale 1.0
+      }
+      output "Dell Inc. DELL U2520D 7Z4V823" {
+          position x=3840 y=360
+      }
+      output "eDP-1" {
+          mode "1920x1200@60.001"
+          scale 1.0
+          transform "normal"
+          position x=3840 y=1800
+      }
+    '';
     greetd_niri.niri.extraKeybindings = ''
       Mod+O repeat=false {
           toggle-overview all-outputs=false

@@ -3,6 +3,10 @@
 
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
+    apple-silicon = {
+      url = "github:nix-community/nixos-apple-silicon";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
 
     nixosModules.url = "github:johnrichardrinehart/nixosModules";
     nixosModules.inputs.nixpkgs.follows = "nixpkgs";
@@ -94,6 +98,27 @@
 
       flake = {
         nixosConfigurations = import ./nixos-configurations inputs;
+
+        nixosModules = {
+          mbp-intel-silicon = {
+            imports = [
+              inputs.nixosModules.nixosModules.default
+              ./nixos-configurations/mbp-intel-silicon
+            ];
+            nixpkgs.overlays = [ inputs.nixosModules.overlays.default ];
+          };
+
+          mbp-apple-silicon =
+            { lib, ... }:
+            {
+              imports = [
+                inputs.nixosModules.nixosModules.default
+                ./nixos-configurations/mbp-apple-silicon
+              ];
+              nixpkgs.overlays = [ inputs.nixosModules.overlays.default ];
+              _module.args.inputs = lib.mkDefault inputs;
+            };
+        };
       };
     };
 }

@@ -1,5 +1,26 @@
 {
   "nodes": {
+    "apple-silicon": {
+      "inputs": {
+        "flake-compat": "flake-compat",
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1789333811,
+        "narHash": "sha256-KsDph8jHv532k1kotia49UBRPj9DcjzziGI18tG3X+A=",
+        "owner": "nix-community",
+        "repo": "nixos-apple-silicon",
+        "rev": "75c719364914ae19f604f3ddbd8f499735d1c9ff",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "nixos-apple-silicon",
+        "type": "github"
+      }
+    },
     "display-layout": {
       "inputs": {
         "flake-parts": "flake-parts_2",
@@ -19,6 +40,21 @@
       "original": {
         "owner": "johnrichardrinehart",
         "repo": "display-layout",
+        "type": "github"
+      }
+    },
+    "flake-compat": {
+      "locked": {
+        "lastModified": 1761640442,
+        "narHash": "sha256-AtrEP6Jmdvrqiv4x2xa5mrtaIp3OEe8uBYCDZDS+hu8=",
+        "owner": "nix-community",
+        "repo": "flake-compat",
+        "rev": "4a56054d8ffc173222d09dad23adf4ba946c8884",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "flake-compat",
         "type": "github"
       }
     },
@@ -301,11 +337,11 @@
         "sops-nix": "sops-nix"
       },
       "locked": {
-        "lastModified": 1789503647,
-        "narHash": "sha256-SVOC+5eHnpSwXWdMek8D635Lx6mW81DftY6xEJJBfAo=",
+        "lastModified": 1789504461,
+        "narHash": "sha256-AUAY7hi/8k3QC6xDVByQ+eIGcFmLTkZx7c1oX0ESbg4=",
         "owner": "johnrichardrinehart",
         "repo": "nixosModules",
-        "rev": "63c84e1a6ae28d652aa2944bf8a5676b4e5f0adf",
+        "rev": "84dc84137d4bfef500302ccc9f3715668b207179",
         "type": "github"
       },
       "original": {
@@ -399,6 +435,7 @@
     },
     "root": {
       "inputs": {
+        "apple-silicon": "apple-silicon",
         "flake-parts": "flake-parts",
         "home-manager": "home-manager",
         "nixos-generators": "nixos-generators",
