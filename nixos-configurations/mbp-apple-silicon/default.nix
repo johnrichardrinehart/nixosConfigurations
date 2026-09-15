@@ -5,7 +5,6 @@
 }:
 {
   imports = [
-    ../workstation.nix
     inputs.apple-silicon.nixosModules.default
   ];
 
@@ -41,7 +40,7 @@
   };
 
   dev.johnrinehart = {
-    laptop.enable = lib.mkDefault true;
+    profiles.laptop.enable = true;
     desktop.greetd_niri.niri.displayModeWatch.enable = lib.mkDefault false;
   };
 }
