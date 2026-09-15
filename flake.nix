@@ -3,10 +3,6 @@
 
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
-    apple-silicon = {
-      url = "github:nix-community/nixos-apple-silicon";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
 
     nixosModules.url = "github:johnrichardrinehart/nixosModules";
     nixosModules.inputs.nixpkgs.follows = "nixpkgs";
@@ -96,29 +92,44 @@
           };
       };
 
-      flake = {
-        nixosConfigurations = import ./nixos-configurations inputs;
-
-        nixosModules = {
-          mbp-intel-silicon = {
-            imports = [
-              inputs.nixosModules.nixosModules.default
-              ./nixos-configurations/mbp-intel-silicon
-            ];
-            nixpkgs.overlays = [ inputs.nixosModules.overlays.default ];
+      flake =
+        let
+          guestImage = inputs.self.nixosConfigurations.mbp-apple-silicon.config.system.build.images.raw-efi;
+          guestImageFile = guestImage.passthru.config.image.filePath;
+          darwinPkgs = import inputs.nixpkgs { system = "aarch64-darwin"; };
+          mbpAppleSiliconVm = darwinPkgs.callPackage ./packages/mbp-apple-silicon-vm.nix {
+            inherit guestImage guestImageFile;
           };
+        in
+        {
+          nixosConfigurations = import ./nixos-configurations inputs;
 
-          mbp-apple-silicon =
-            { lib, ... }:
-            {
+          nixosModules = {
+            mbp-intel-silicon = {
               imports = [
                 inputs.nixosModules.nixosModules.default
-                ./nixos-configurations/mbp-apple-silicon
+                ./nixos-configurations/mbp-intel-silicon
               ];
               nixpkgs.overlays = [ inputs.nixosModules.overlays.default ];
-              _module.args.inputs = lib.mkDefault inputs;
             };
+
+            mbp-apple-silicon =
+              { lib, ... }:
+              {
+                imports = [
+                  inputs.nixosModules.nixosModules.default
+                  ./nixos-configurations/mbp-apple-silicon
+                ];
+                nixpkgs.overlays = [ inputs.nixosModules.overlays.default ];
+                _module.args.inputs = lib.mkDefault inputs;
+              };
+          };
+
+          packages.aarch64-darwin.mbp-apple-silicon-vm = mbpAppleSiliconVm;
+          apps.aarch64-darwin.mbp-apple-silicon-vm = {
+            type = "app";
+            program = "${mbpAppleSiliconVm}/bin/mbp-apple-silicon-vm";
+          };
         };
-      };
     };
 }

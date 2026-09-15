@@ -1,13 +1,5 @@
+{ lib, ... }:
 {
-  inputs,
-  lib,
-  ...
-}:
-{
-  imports = [
-    inputs.apple-silicon.nixosModules.default
-  ];
-
   nixpkgs.hostPlatform = "aarch64-linux";
 
   networking = {
@@ -15,22 +7,26 @@
     networkmanager.enable = lib.mkDefault true;
   };
 
-  hardware.asahi = {
-    enable = true;
-    # Downstream hosts should point peripheralFirmwareDirectory at their
-    # machine-specific firmware bundle before enabling extraction.
-    extractPeripheralFirmware = lib.mkDefault false;
-    avd.enable = lib.mkDefault false;
-  };
-  boot.loader = {
-    systemd-boot.enable = lib.mkDefault true;
-    efi.canTouchEfiVariables = lib.mkDefault false;
+  boot = {
+    initrd.availableKernelModules = [
+      "virtio_pci"
+      "virtio_blk"
+      "virtio_scsi"
+    ];
+    kernelModules = [ "virtio_gpu" ];
+    kernelParams = [ "console=hvc0" ];
+    loader = {
+      systemd-boot.enable = lib.mkDefault true;
+      efi.canTouchEfiVariables = lib.mkDefault false;
+    };
   };
 
   fileSystems."/" = {
     device = lib.mkDefault "/dev/disk/by-label/nixos";
     fsType = lib.mkDefault "ext4";
   };
+
+  virtualisation.diskSize = lib.mkDefault (64 * 1024);
 
   security.rtkit.enable = lib.mkDefault true;
   services.pipewire = {
