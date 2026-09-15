@@ -24,7 +24,7 @@
   nixpkgs.config.allowBroken = true;
   nixpkgs.config.allowUnfree = true;
   nixpkgs.config.permittedInsecurePackages = [
-    "broadcom-sta-6.30.223.271-57-5.16.10"
+    "broadcom-sta-6.30.223.271-59-5.16.10"
   ];
 
   # https://nixos.wiki/wiki/Linux_kernel#Booting_a_kernel_from_a_custom_source
