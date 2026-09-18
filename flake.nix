@@ -126,6 +126,7 @@
               ;
           };
           mbpAppleSiliconVm = aarch64DarwinPkgs.callPackage ./packages/mbp-apple-silicon-vm.nix vmArgs;
+          mbpAppleSiliconQemuVm = aarch64DarwinPkgs.callPackage ./packages/mbp-apple-silicon-qemu-vm.nix vmArgs;
         in
         {
           nixosConfigurations = (import ./nixos-configurations inputs) // {
@@ -156,10 +157,19 @@
               };
           };
 
-          packages.aarch64-darwin.mbp-apple-silicon-vm = mbpAppleSiliconVm;
-          apps.aarch64-darwin.mbp-apple-silicon-vm = {
-            type = "app";
-            program = "${mbpAppleSiliconVm}/bin/mbp-apple-silicon-vm";
+          packages.aarch64-darwin = {
+            mbp-apple-silicon-vm = mbpAppleSiliconVm;
+            mbp-apple-silicon-qemu-vm = mbpAppleSiliconQemuVm;
+          };
+          apps.aarch64-darwin = {
+            mbp-apple-silicon-vm = {
+              type = "app";
+              program = "${mbpAppleSiliconVm}/bin/mbp-apple-silicon-vm";
+            };
+            mbp-apple-silicon-qemu-vm = {
+              type = "app";
+              program = "${mbpAppleSiliconQemuVm}/bin/mbp-apple-silicon-qemu-vm";
+            };
           };
         };
     };
