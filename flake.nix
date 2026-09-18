@@ -98,7 +98,10 @@
 
       flake =
         let
-          aarch64DarwinPkgs = import inputs.nixpkgs { system = "aarch64-darwin"; };
+          aarch64DarwinPkgs = import inputs.nixpkgs {
+            system = "aarch64-darwin";
+            overlays = [ (import ./packages/spice-quartz-overlay.nix) ];
+          };
           bootstrapIso = aarch64DarwinPkgs.fetchurl {
             url = "https://releases.nixos.org/nixos/unstable/nixos-26.11pre1073009.ef34387ddd75/nixos-minimal-26.11pre1073009.ef34387ddd75-aarch64-linux.iso";
             hash = "sha256-0ObLuRcYGcsfF0SCV9i+NjZVImGvr1EFX8JH+4e5u7M=";
