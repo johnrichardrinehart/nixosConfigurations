@@ -59,6 +59,7 @@
   environment.systemPackages = [
     pkgs.vim
     pkgs.git
+    pkgs.dev.johnrinehart.git-patch-wormhole
     pkgs.dev.johnrinehart.tmux
     pkgs.thin-provisioning-tools # for cache_check
   ];

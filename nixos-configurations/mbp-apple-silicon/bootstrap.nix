@@ -1,4 +1,5 @@
 {
+  inputs,
   lib,
   modulesPath,
   pkgs,
@@ -9,6 +10,8 @@
     ./base.nix
     (modulesPath + "/profiles/minimal.nix")
   ];
+
+  nixpkgs.overlays = [ inputs.nixosModules.overlays.default ];
 
   system.stateVersion = "24.05";
   documentation.enable = false;
@@ -32,5 +35,8 @@
   };
   security.sudo.wheelNeedsPassword = false;
 
-  environment.systemPackages = [ pkgs.gitMinimal ];
+  environment.systemPackages = [
+    pkgs.gitMinimal
+    pkgs.dev.johnrinehart.git-patch-wormhole
+  ];
 }
