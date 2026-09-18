@@ -1,6 +1,9 @@
 { lib, ... }:
 {
-  imports = [ ./base.nix ];
+  imports = [
+    ./base.nix
+    ./niri-software-egl.nix
+  ];
 
   security.rtkit.enable = lib.mkDefault true;
   services.pipewire = {

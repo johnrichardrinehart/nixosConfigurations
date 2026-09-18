@@ -37,5 +37,22 @@
     };
   };
 
+  # virtio-gpu has no virglrenderer behind it on a macOS host, so Mesa only
+  # offers llvmpipe and niri refuses software EGL unless asked. Pairs with
+  # 0004-tty-allow-opting-into-software-egl.patch in nixosModules.
+  systemd.user.extraConfig = "DefaultEnvironment=NIRI_ALLOW_SOFTWARE_EGL=1";
+
+  # niri's shared config ends with `include optional=true "/tmp/niri.kdl"`, so
+  # this is where machine-local overrides go. Point niri's renderer at the
+  # primary node: virtio-gpu's render node cannot back a software EGL renderer,
+  # and Smithay registers the GPU under card0 instead. Pairs with
+  # 0005-tty-honour-configured-node-for-software-egl.patch in nixosModules.
+  environment.etc."niri/vm-overrides.kdl".text = ''
+    debug {
+        render-drm-device "/dev/dri/card0"
+    }
+  '';
+  systemd.tmpfiles.rules = [ "L+ /tmp/niri.kdl - - - - /etc/niri/vm-overrides.kdl" ];
+
   virtualisation.diskSize = lib.mkDefault (64 * 1024);
 }
