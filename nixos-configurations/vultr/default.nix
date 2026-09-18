@@ -59,6 +59,7 @@
     pkgs.dev.johnrinehart.tmux
     pkgs.vim
     pkgs.git
+    pkgs.dev.johnrinehart.git-patch-wormhole
     pkgs.nixpkgs-fmt
   ];
 
