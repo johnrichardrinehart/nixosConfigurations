@@ -63,6 +63,10 @@ writeShellApplication {
       MBP_APPLE_VM_SHARED_DIR       Optional host directory shared as "host"
       MBP_APPLE_VM_STATE_DIR        Persistent VM state directory
       MBP_APPLE_VM_IMAGE            Preinstalled raw disk image copied on first run
+      MBP_APPLE_VM_BOOT_TIMEOUT     Installer shell timeout in seconds (default: 300)
+      MBP_APPLE_VM_PROVISION_TIMEOUT
+                                    Disko provisioning timeout in seconds
+                                    (default: 1800)
     EOF
     }
 
@@ -168,6 +172,19 @@ writeShellApplication {
     display_width="''${MBP_APPLE_VM_DISPLAY_WIDTH:-1920}"
     display_height="''${MBP_APPLE_VM_DISPLAY_HEIGHT:-1200}"
     network_device="''${MBP_APPLE_VM_NETWORK_DEVICE:-}"
+    # Every serial wait is bounded, so a guest that never reaches its shell
+    # fails instead of blocking the launcher forever.
+    boot_timeout="''${MBP_APPLE_VM_BOOT_TIMEOUT:-300}"
+    provision_timeout="''${MBP_APPLE_VM_PROVISION_TIMEOUT:-1800}"
+    if [[ ! "$boot_timeout" =~ ^[1-9][0-9]*$ ]]; then
+      echo "MBP_APPLE_VM_BOOT_TIMEOUT must be a positive integer" >&2
+      exit 1
+    fi
+    if [[ ! "$provision_timeout" =~ ^[1-9][0-9]*$ ]]; then
+      echo "MBP_APPLE_VM_PROVISION_TIMEOUT must be a positive integer" >&2
+      exit 1
+    fi
+    serial_log="$state_dir/installer-serial.log"
     gvproxy_pid=""
     network_socket=""
     cleanup() {
@@ -267,6 +284,7 @@ writeShellApplication {
       )
 
       if expect ${serialProvisioner} "$network_command" "$provision_command" "$marker" \
+        "$serial_log" "$boot_timeout" "$provision_timeout" \
         vfkit "''${vfkit_args[@]}" "$@"; then
         status=0
       else

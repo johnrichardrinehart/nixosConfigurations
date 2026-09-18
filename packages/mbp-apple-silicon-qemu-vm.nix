@@ -107,6 +107,10 @@ writeShellApplication {
       MBP_APPLE_VM_SSH_PORT         Host SSH forwarding port (default: 2223)
       MBP_APPLE_VM_SHARED_DIR       Optional host directory shared as "host"
       MBP_APPLE_VM_STATE_DIR        Persistent VM state directory
+      MBP_APPLE_VM_BOOT_TIMEOUT     Installer shell timeout in seconds (default: 300)
+      MBP_APPLE_VM_PROVISION_TIMEOUT
+                                    Disko provisioning timeout in seconds
+                                    (default: 1800)
     EOF
     }
 
@@ -279,6 +283,19 @@ writeShellApplication {
     display_width="''${display_width:-1920}"
     display_height="''${display_height:-1200}"
     ssh_port="''${MBP_APPLE_VM_SSH_PORT:-2223}"
+    # Every serial wait is bounded, so a guest that never reaches its shell
+    # fails instead of blocking the launcher forever.
+    boot_timeout="''${MBP_APPLE_VM_BOOT_TIMEOUT:-300}"
+    provision_timeout="''${MBP_APPLE_VM_PROVISION_TIMEOUT:-1800}"
+    if [[ ! "$boot_timeout" =~ ^[1-9][0-9]*$ ]]; then
+      echo "MBP_APPLE_VM_BOOT_TIMEOUT must be a positive integer" >&2
+      exit 1
+    fi
+    if [[ ! "$provision_timeout" =~ ^[1-9][0-9]*$ ]]; then
+      echo "MBP_APPLE_VM_PROVISION_TIMEOUT must be a positive integer" >&2
+      exit 1
+    fi
+    serial_log="$state_dir/installer-serial.log"
 
     client_pid=""
     cleanup() {
@@ -436,6 +453,7 @@ writeShellApplication {
       )
 
       if expect ${serialProvisioner} "$network_command" "$provision_command" "$marker" \
+        "$serial_log" "$boot_timeout" "$provision_timeout" \
         qemu-system-aarch64 "''${qemu_args[@]}" "$@"; then
         status=0
       else
