@@ -3,6 +3,7 @@
   imports = [
     ./base.nix
     ./niri-software-egl.nix
+    ./spice-agent.nix
   ];
 
   security.rtkit.enable = lib.mkDefault true;

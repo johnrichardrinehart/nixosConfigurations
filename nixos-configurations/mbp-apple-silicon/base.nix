@@ -54,5 +54,9 @@
   '';
   systemd.tmpfiles.rules = [ "L+ /tmp/niri.kdl - - - - /etc/niri/vm-overrides.kdl" ];
 
+  # Lets a SPICE client resize the guest displays and share the clipboard;
+  # inert under vfkit, which has no SPICE channel.
+  services.spice-vdagentd.enable = lib.mkDefault true;
+
   virtualisation.diskSize = lib.mkDefault (64 * 1024);
 }
