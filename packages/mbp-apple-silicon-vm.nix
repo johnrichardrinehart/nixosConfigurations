@@ -4,115 +4,12 @@
   expect,
   guestFlake,
   gvproxy,
+  installerBoot,
   lib,
-  libarchive,
-  runCommand,
+  serialProvisioner,
   vfkit,
   writeShellApplication,
-  writeText,
 }:
-let
-  bootstrapArtifacts =
-    runCommand "nixos-installer-vfkit-boot" { nativeBuildInputs = [ libarchive ]; }
-      ''
-        mkdir -p "$out"
-        bsdtar -xOf ${bootstrapIso} EFI/BOOT/grub.cfg > grub.cfg
-
-        linux_line=$(awk '$1 == "linux" && $2 ~ "^/boot/" { print; exit }' grub.cfg | sed 's|[$]{isoboot}||')
-        initrd_line=$(awk '$1 == "initrd" && $2 ~ "^/boot/" { print; exit }' grub.cfg)
-        if [[ -z "$linux_line" || -z "$initrd_line" ]]; then
-          echo "failed to read the default installer boot entry" >&2
-          exit 1
-        fi
-
-        kernel_member=$(awk '{ print $2 }' <<< "$linux_line" | sed -e 's|^/||' -e 's|//|/|g')
-        initrd_member=$(awk '{ print $2 }' <<< "$initrd_line" | sed -e 's|^/||' -e 's|//|/|g')
-        kernel_cmdline=$(awk '{ $1 = ""; $2 = ""; sub(/^ +/, ""); print }' <<< "$linux_line")
-
-        bsdtar -xOf ${bootstrapIso} "$kernel_member" > "$out/Image"
-        bsdtar -xOf ${bootstrapIso} "$initrd_member" > "$out/initrd"
-        printf '%s console=tty0 console=hvc0\n' "$kernel_cmdline" > "$out/cmdline"
-        test -s "$out/Image"
-        test -s "$out/initrd"
-      '';
-
-  serialProvisioner = writeText "mbp-apple-silicon-provision.expect" ''
-    set timeout 5
-    set network [lindex $argv 0]
-    set provision [lindex $argv 1]
-    set marker [lindex $argv 2]
-    set serial_log [lindex $argv 3]
-    set boot_timeout [lindex $argv 4]
-    set command [lrange $argv 5 end]
-    set boot_started [clock seconds]
-    set next_status 30
-    log_file -a -noappend $serial_log
-    log_user 0
-    spawn -noecho {*}$command
-    send_user "Starting VM; serial output is being saved to $serial_log.\n"
-    expect {
-      -re {\r?\n__NIXOS_INSTALLER_READY_7C18D3__\r?\n} {}
-      timeout {
-        set elapsed [expr {[clock seconds] - $boot_started}]
-        if {$elapsed >= $boot_timeout} {
-          send_user "\nInstaller shell did not appear within $boot_timeout seconds.\n"
-          send_user "Inspect the captured boot output at $serial_log.\n"
-          catch {exec kill -TERM [exp_pid]}
-          catch {close}
-          catch {wait}
-          exit 124
-        }
-        if {$elapsed >= $next_status} {
-          send_user "Still waiting for the NixOS installer shell ($elapsed seconds)...\n"
-          incr next_status 30
-        }
-        send -- "\rprintf '\\n__NIXOS_INSTALLER_READY_7C18D3__\\n'\r"
-        exp_continue
-      }
-      eof {
-        set result [wait]
-        exit [lindex $result 3]
-      }
-    }
-    set timeout -1
-    send_user "\nNixOS installer ready; waiting for guest networking.\n"
-    send -- "$network\r"
-    expect {
-      -re {\r?\n__NIXOS_NETWORK_READY_7C18D3__\r?\n} {}
-      eof {
-        set result [wait]
-        exit [lindex $result 3]
-      }
-    }
-    log_user 1
-    send_user "\nStarting Disko provisioning.\n"
-    send -- "$provision\r"
-    expect {
-      -re {__DISKO_PROVISION_STATUS_0__} {
-        file delete -force $marker
-        send_user "\nDisko provisioned /dev/vda and mounted it under /mnt.\n"
-      }
-      -re {__DISKO_PROVISION_STATUS_([0-9]+)__} {
-        send_user "\nDisko provisioning failed with status $expect_out(1,string).\n"
-      }
-      eof {
-        set result [wait]
-        exit [lindex $result 3]
-      }
-    }
-    send -- "stty sane; printf '\\n__NIXOS_INTERACTIVE_READY_7C18D3__\\n'\r"
-    expect {
-      -re {\r?\n__NIXOS_INTERACTIVE_READY_7C18D3__\r?\n} {}
-      eof {
-        set result [wait]
-        exit [lindex $result 3]
-      }
-    }
-    interact
-    set result [wait]
-    exit [lindex $result 3]
-  '';
-in
 writeShellApplication {
   name = "mbp-apple-silicon-vm";
   runtimeInputs = [
@@ -125,7 +22,9 @@ writeShellApplication {
   text = ''
     usage() {
       cat <<'EOF'
-    Usage: mbp-apple-silicon-vm [--installer] [--reset] [--state-dir PATH] [-- VFKit arguments...]
+    Usage: mbp-apple-silicon-vm [--installer] [--reset] [--mount] [--no-gui]
+                                [--state-dir PATH]
+                                [-- VFKit arguments...]
 
     A newly created disk boots the pinned NixOS ARM installer. The launcher then
     waits for its serial shell, fetches this flake's generated Disko script,
@@ -135,30 +34,44 @@ writeShellApplication {
       sudo nixos-install \
         --flake github:johnrichardrinehart/nixosConfigurations#mbp-apple-silicon-bootstrap
 
+    nixos-install builds into /mnt, so the target disk holds the closure.
+    nixos-rebuild instead builds into the installer's own store, a RAM disk
+    of about half the guest memory, and runs out of space on any real system.
+
     Later runs boot that persistent system. Rebuild it to the full
-    mbp-apple-silicon configuration from inside the installed guest.
+    mbp-apple-silicon configuration from inside the installed guest, or pass
+    that attribute to nixos-install directly to skip the bootstrap step.
     Pass --installer to attach the ISO again.
 
+    --mount boots the installer and mounts the existing filesystems under /mnt
+    with disko's own options, which is how to reinstall without reformatting.
+    Mounting the ESP by hand instead leaves it world readable and systemd-boot
+    writes its random seed into a world accessible file.
+
     Environment:
-      MBP_APPLE_VM_CPUS             Virtual CPU count (default: 4)
-      MBP_APPLE_VM_MEMORY_MIB       Guest memory in MiB (default: 8192)
-      MBP_APPLE_VM_DISK_SIZE        Sparse persistent disk size (default: 64G)
+      MBP_APPLE_VM_GUI              0 disables the graphical window (default: 1)
+      MBP_APPLE_VM_CPUS             Virtual CPU count (default: every host core)
+      MBP_APPLE_VM_MEMORY_MIB       Guest memory in MiB (default: 80% of host RAM)
+      MBP_APPLE_VM_DISK_SIZE        Sparse persistent disk size (default: 512G)
       MBP_APPLE_VM_DISPLAY_WIDTH    Virtual display width (default: 1920)
       MBP_APPLE_VM_DISPLAY_HEIGHT   Virtual display height (default: 1200)
+                                    Virtualization.framework supports a single
+                                    scanout, so the guest always sees exactly
+                                    one output at this resolution.
       MBP_APPLE_VM_NETWORK_DEVICE   Custom VFKit network descriptor; bypasses gvproxy
       MBP_APPLE_VM_SSH_PORT         Host SSH forwarding port (default: 2223)
       MBP_APPLE_VM_SHARED_DIR       Optional host directory shared as "host"
       MBP_APPLE_VM_STATE_DIR        Persistent VM state directory
       MBP_APPLE_VM_IMAGE            Preinstalled raw disk image copied on first run
-      MBP_APPLE_VM_BOOT_TIMEOUT      Installer shell timeout in seconds (default: 300)
     EOF
     }
 
     installer=0
     provision=0
+    mount_only=0
     reset=0
-    default_state_dir="$HOME/Library/Application Support/mbp-apple-silicon-vm"
-    state_dir="''${MBP_APPLE_VM_STATE_DIR:-$default_state_dir}"
+    gui="''${MBP_APPLE_VM_GUI:-1}"
+    state_dir="''${MBP_APPLE_VM_STATE_DIR:-''${XDG_DATA_HOME:-$HOME/Library/Application Support}/mbp-apple-silicon-vm}"
     while (( $# > 0 )); do
       case "$1" in
         --installer)
@@ -168,6 +81,19 @@ writeShellApplication {
         --reset)
           installer=1
           reset=1
+          shift
+          ;;
+        --mount)
+          installer=1
+          mount_only=1
+          shift
+          ;;
+        --gui)
+          gui=1
+          shift
+          ;;
+        --no-gui)
+          gui=0
           shift
           ;;
         --state-dir)
@@ -191,16 +117,6 @@ writeShellApplication {
           ;;
       esac
     done
-    if [[
-      "$state_dir" == "$default_state_dir"
-      && -n "''${XDG_DATA_HOME:-}"
-      && ! -e "$state_dir"
-      && -d "$XDG_DATA_HOME/mbp-apple-silicon-vm"
-    ]]; then
-      mkdir -p "$(dirname "$default_state_dir")"
-      mv "$XDG_DATA_HOME/mbp-apple-silicon-vm" "$default_state_dir"
-    fi
-
 
     mkdir -p "$state_dir"
     disk="$state_dir/root.img"
@@ -226,7 +142,7 @@ writeShellApplication {
         mv "$temporary_disk" "$disk"
         trap - EXIT
       else
-        truncate -s "''${MBP_APPLE_VM_DISK_SIZE:-64G}" "$disk"
+        truncate -s "''${MBP_APPLE_VM_DISK_SIZE:-512G}" "$disk"
         touch "$needs_provision"
         installer=1
       fi
@@ -237,18 +153,21 @@ writeShellApplication {
       provision=1
     fi
 
-    cpus="''${MBP_APPLE_VM_CPUS:-4}"
-    memory="''${MBP_APPLE_VM_MEMORY_MIB:-8192}"
+    # Default to the whole machine: every core, and 80% of RAM left for the
+    # guest with the rest reserved for macOS.
+    host_cpus=$(/usr/sbin/sysctl -n hw.ncpu 2>/dev/null || echo 4)
+    host_memory_bytes=$(/usr/sbin/sysctl -n hw.memsize 2>/dev/null || echo 0)
+    if (( host_memory_bytes > 0 )); then
+      host_memory=$(( host_memory_bytes * 8 / 10 / 1024 / 1024 ))
+    else
+      host_memory=8192
+    fi
+
+    cpus="''${MBP_APPLE_VM_CPUS:-$host_cpus}"
+    memory="''${MBP_APPLE_VM_MEMORY_MIB:-$host_memory}"
     display_width="''${MBP_APPLE_VM_DISPLAY_WIDTH:-1920}"
     display_height="''${MBP_APPLE_VM_DISPLAY_HEIGHT:-1200}"
     network_device="''${MBP_APPLE_VM_NETWORK_DEVICE:-}"
-    boot_timeout="''${MBP_APPLE_VM_BOOT_TIMEOUT:-300}"
-    if [[ ! "$boot_timeout" =~ ^[1-9][0-9]*$ ]]; then
-      echo "MBP_APPLE_VM_BOOT_TIMEOUT must be a positive integer" >&2
-      exit 2
-    fi
-    serial_log="$state_dir/installer-serial.log"
-    touch "$serial_log"
     gvproxy_pid=""
     network_socket=""
     cleanup() {
@@ -287,8 +206,9 @@ writeShellApplication {
     fi
 
     if (( installer )); then
-      boot_cmdline=$(<${bootstrapArtifacts}/cmdline)
-      bootloader="linux,kernel=${bootstrapArtifacts}/Image,initrd=${bootstrapArtifacts}/initrd,cmdline=\"$boot_cmdline\""
+      # Apple's EFI firmware never reaches the serial line either, so the
+      # installer is booted straight from the kernel the ISO ships.
+      bootloader="linux,kernel=${installerBoot}/Image,initrd=${installerBoot}/initrd,cmdline=\"$(cat ${installerBoot}/cmdline)\""
     else
       bootloader="efi,variable-store=$variable_store,create"
     fi
@@ -307,6 +227,12 @@ writeShellApplication {
       --device "virtio-serial,stdio"
     )
 
+    # vfkit only draws a window when asked; without this the virtio-gpu device
+    # exists but nothing is ever displayed.
+    if (( gui )); then
+      vfkit_args+=( --gui )
+    fi
+
     if (( installer )); then
       vfkit_args+=(
         --device "usb-mass-storage,path=${bootstrapIso},readonly"
@@ -319,16 +245,29 @@ writeShellApplication {
       )
     fi
 
-    if (( provision )); then
+    if (( provision || mount_only )); then
+      # mountScript only mounts, with the options disko declares (the ESP's
+      # umask=0077 among them); diskoScript wipes and formats first. Hand
+      # mounting the ESP instead leaves it world readable, which systemd-boot
+      # rightly refuses to keep quiet about.
+      if (( mount_only )); then
+        disko_attr=mountScript
+        marker=$state_dir/.no-such-marker
+      else
+        disko_attr=diskoScript
+        marker=$needs_provision
+      fi
       guest_flake=${lib.escapeShellArg guestFlake}
-      network_command="network_ready=0; for _ in \$(seq 1 60); do if getent hosts github.com >/dev/null 2>&1; then network_ready=1; break; fi; sleep 1; done; printf '\\n__NIXOS_NETWORK_READY_7C18D3__\\n'"
+      # These two run in the guest shell, so nothing may expand here.
+      # shellcheck disable=SC2016
+      network_command='network_ready=0; for _ in $(seq 1 60); do if getent hosts github.com >/dev/null 2>&1; then network_ready=1; break; fi; sleep 1; done'
       provision_command=$(cat <<EOF
-    if (( network_ready )); then disko_output=\$(nix --extra-experimental-features 'nix-command flakes' build --no-link --print-out-paths '$guest_flake#nixosConfigurations."mbp-apple-silicon-bootstrap".config.system.build.diskoScript') && sudo "\$disko_output"; status=\$?; else echo 'network did not become ready within 60 seconds' >&2; status=69; fi; printf '\n__DISKO_PROVISION_STATUS_%s__\n' "\$status"
+    if (( network_ready )); then disko_output=\$(nix --extra-experimental-features 'nix-command flakes' build --no-link --print-out-paths '$guest_flake#nixosConfigurations."mbp-apple-silicon-bootstrap".config.system.build.$disko_attr') && sudo "\$disko_output"; status=\$?; else echo 'network did not become ready within 60 seconds' >&2; status=69; fi; printf '\n__DISKO_PROVISION_STATUS_%s__\n' "\$status"
     EOF
       )
 
-      if expect ${serialProvisioner} "$network_command" "$provision_command" "$needs_provision" \
-        "$serial_log" "$boot_timeout" vfkit "''${vfkit_args[@]}" "$@"; then
+      if expect ${serialProvisioner} "$network_command" "$provision_command" "$marker" \
+        vfkit "''${vfkit_args[@]}" "$@"; then
         status=0
       else
         status=$?

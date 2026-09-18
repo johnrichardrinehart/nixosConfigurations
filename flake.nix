@@ -108,9 +108,21 @@
               "github:johnrichardrinehart/nixosConfigurations/${inputs.self.rev}"
             else
               "github:johnrichardrinehart/nixosConfigurations/main";
-          mbpAppleSiliconVm = aarch64DarwinPkgs.callPackage ./packages/mbp-apple-silicon-vm.nix {
-            inherit bootstrapIso guestFlake;
+          installerBoot = aarch64DarwinPkgs.callPackage ./packages/nixos-installer-boot.nix {
+            inherit bootstrapIso;
           };
+          serialProvisioner = aarch64DarwinPkgs.callPackage ./packages/serial-provisioner.nix {
+            inherit guestFlake;
+          };
+          vmArgs = {
+            inherit
+              bootstrapIso
+              guestFlake
+              installerBoot
+              serialProvisioner
+              ;
+          };
+          mbpAppleSiliconVm = aarch64DarwinPkgs.callPackage ./packages/mbp-apple-silicon-vm.nix vmArgs;
         in
         {
           nixosConfigurations = (import ./nixos-configurations inputs) // {
