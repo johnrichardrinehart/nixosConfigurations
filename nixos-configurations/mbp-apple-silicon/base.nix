@@ -22,8 +22,15 @@
       "virtio_blk"
       "virtio_scsi"
     ];
+    # Bring the display up in stage 1 so early boot is visible in vfkit's window.
+    initrd.kernelModules = [ "virtio_gpu" ];
     kernelModules = [ "virtio_gpu" ];
-    kernelParams = [ "console=hvc0" ];
+    # tty0 puts the kernel log on the virtual display; hvc0 stays last so it
+    # remains /dev/console and keeps the serial getty vfkit talks to.
+    kernelParams = [
+      "console=tty0"
+      "console=hvc0"
+    ];
     loader = {
       systemd-boot.enable = lib.mkDefault true;
       efi.canTouchEfiVariables = lib.mkDefault false;
