@@ -13,8 +13,7 @@
     # Keep the source revision supported by the local terminal patch series.
     nixosModules.inputs.monstar.url = "github:rockorager/monstar/6cf9c9f3b5f297cfdc2798484b324187d6ce9dc5";
 
-    # Last package set before the September 7 rebase; matches the running system.
-    nixpkgs.url = "github:johnrichardrinehart/nixpkgs/3cbb62194f2f3fce1bce5c60d70b2a70d2a47ae2";
+    nixpkgs.url = "github:johnrichardrinehart/nixpkgs?ref=rock-5c-nixos-26.05";
 
     home-manager = {
       url = "github:nix-community/home-manager/release-26.05";

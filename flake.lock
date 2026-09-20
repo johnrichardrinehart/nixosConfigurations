@@ -359,11 +359,11 @@
         "sops-nix": "sops-nix"
       },
       "locked": {
-        "lastModified": 1789905702,
-        "narHash": "sha256-Hj2Y22zDsKKpp6aBR8V+I6ouugJB6SRGuoQl44AQo98=",
+        "lastModified": 1789907226,
+        "narHash": "sha256-ejtqXKWSAVrOIxg3AD1GQIYUk5p+WwzQhInHRMRBfAU=",
         "owner": "johnrichardrinehart",
         "repo": "nixosModules",
-        "rev": "7ab87fdc1e5e22f709b12985af35729f320ac97e",
+        "rev": "97116fd411e589271de87d92838904ca7f210cd5",
         "type": "github"
       },
       "original": {
@@ -374,17 +374,17 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1788576296,
-        "narHash": "sha256-ba/K27PbdqLexPz/goQNV/LPLGLEtUAjdxsraR1vdJI=",
+        "lastModified": 1789905915,
+        "narHash": "sha256-9ZCuptEYNjWKQ2P3Q8AEMgA71848gvKYATkwo36vPDE=",
         "owner": "johnrichardrinehart",
         "repo": "nixpkgs",
-        "rev": "3cbb62194f2f3fce1bce5c60d70b2a70d2a47ae2",
+        "rev": "b37d3347667fa09d4d8beb96f4a00841a549d8ee",
         "type": "github"
       },
       "original": {
         "owner": "johnrichardrinehart",
+        "ref": "rock-5c-nixos-26.05",
         "repo": "nixpkgs",
-        "rev": "3cbb62194f2f3fce1bce5c60d70b2a70d2a47ae2",
         "type": "github"
       }
     },
