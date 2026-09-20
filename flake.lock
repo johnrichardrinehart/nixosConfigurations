@@ -162,14 +162,18 @@
     },
     "flake-parts_6": {
       "inputs": {
-        "nixpkgs-lib": "nixpkgs-lib_3"
+        "nixpkgs-lib": [
+          "nixosModules",
+          "repo-manager",
+          "nixpkgs"
+        ]
       },
       "locked": {
-        "lastModified": 1775087534,
-        "narHash": "sha256-91qqW8lhL7TLwgQWijoGBbiD4t7/q75KTi8NxjVmSmA=",
+        "lastModified": 1788450739,
+        "narHash": "sha256-glZLQlzIn1fXH6PazR2iUmTo7kzzyYSshrWhLS9TqCU=",
         "owner": "hercules-ci",
         "repo": "flake-parts",
-        "rev": "3107b77cd68437b9a76194f0f7f9c55f2329ca5b",
+        "rev": "31729ca8cbdb4fa927b34e5f4353e6a83f39e993",
         "type": "github"
       },
       "original": {
@@ -356,14 +360,15 @@
         "nixpkgs": [
           "nixpkgs"
         ],
+        "repo-manager": "repo-manager",
         "sops-nix": "sops-nix"
       },
       "locked": {
-        "lastModified": 1789907226,
-        "narHash": "sha256-ejtqXKWSAVrOIxg3AD1GQIYUk5p+WwzQhInHRMRBfAU=",
+        "lastModified": 1789923738,
+        "narHash": "sha256-nb3eKKjvsHAY8Bk4rvrnJPSNgYPCezVxhImWzQFHdBg=",
         "owner": "johnrichardrinehart",
         "repo": "nixosModules",
-        "rev": "97116fd411e589271de87d92838904ca7f210cd5",
+        "rev": "673979ccd52bbcb5a67f8a678131a0f4d4fbc058",
         "type": "github"
       },
       "original": {
@@ -418,21 +423,6 @@
         "type": "github"
       }
     },
-    "nixpkgs-lib_3": {
-      "locked": {
-        "lastModified": 1774748309,
-        "narHash": "sha256-+U7gF3qxzwD5TZuANzZPeJTZRHS29OFQgkQ2kiTJBIQ=",
-        "owner": "nix-community",
-        "repo": "nixpkgs.lib",
-        "rev": "333c4e0545a6da976206c74db8773a1645b5870a",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nix-community",
-        "repo": "nixpkgs.lib",
-        "type": "github"
-      }
-    },
     "repo-manager": {
       "inputs": {
         "flake-parts": "flake-parts_5",
@@ -458,7 +448,7 @@
     },
     "rock5c-nixos": {
       "inputs": {
-        "flake-parts": "flake-parts_5",
+        "flake-parts": "flake-parts_6",
         "nixpkgs": [
           "nixosModules",
           "nixpkgs"
