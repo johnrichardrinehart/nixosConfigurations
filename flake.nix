@@ -95,34 +95,75 @@
           };
       };
 
-      flake = {
-        nixosConfigurations = (import ./nixos-configurations inputs) // {
-          mbp-apple-silicon-bootstrap = inputs.nixosModules.lib.nixosSystem {
-            modules = [ ./nixos-configurations/mbp-apple-silicon/bootstrap.nix ];
-            specialArgs = { inherit inputs; };
+      flake =
+        let
+          aarch64DarwinPkgs = import inputs.nixpkgs {
+            system = "aarch64-darwin";
+            overlays = [ (import ./packages/spice-quartz-overlay.nix) ];
           };
-        };
-
-        nixosModules = {
-          mbp-intel-silicon = {
-            imports = [
-              inputs.nixosModules.nixosModules.default
-              ./nixos-configurations/mbp-intel-silicon
-            ];
-            nixpkgs.overlays = [ inputs.nixosModules.overlays.default ];
+          bootstrapIso = aarch64DarwinPkgs.fetchurl {
+            url = "https://releases.nixos.org/nixos/unstable/nixos-26.11pre1073009.ef34387ddd75/nixos-minimal-26.11pre1073009.ef34387ddd75-aarch64-linux.iso";
+            hash = "sha256-0ObLuRcYGcsfF0SCV9i+NjZVImGvr1EFX8JH+4e5u7M=";
+          };
+          guestFlake =
+            if inputs.self ? rev then
+              "github:johnrichardrinehart/nixosConfigurations/${inputs.self.rev}"
+            else
+              "github:johnrichardrinehart/nixosConfigurations/main";
+          installerBoot = aarch64DarwinPkgs.callPackage ./packages/nixos-installer-boot.nix {
+            inherit bootstrapIso;
+          };
+          serialProvisioner = aarch64DarwinPkgs.callPackage ./packages/serial-provisioner.nix {
+            inherit guestFlake;
+          };
+          vmArgs = {
+            inherit
+              bootstrapIso
+              guestFlake
+              installerBoot
+              serialProvisioner
+              ;
+          };
+          mbpAppleSiliconQemuVm = aarch64DarwinPkgs.callPackage ./packages/mbp-apple-silicon-qemu-vm.nix vmArgs;
+        in
+        {
+          nixosConfigurations = (import ./nixos-configurations inputs) // {
+            mbp-apple-silicon-bootstrap = inputs.nixosModules.lib.nixosSystem {
+              modules = [ ./nixos-configurations/mbp-apple-silicon/bootstrap.nix ];
+              specialArgs = { inherit inputs; };
+            };
           };
 
-          mbp-apple-silicon =
-            { lib, ... }:
-            {
+          nixosModules = {
+            mbp-intel-silicon = {
               imports = [
                 inputs.nixosModules.nixosModules.default
-                ./nixos-configurations/mbp-apple-silicon
+                ./nixos-configurations/mbp-intel-silicon
               ];
               nixpkgs.overlays = [ inputs.nixosModules.overlays.default ];
-              _module.args.inputs = lib.mkDefault inputs;
             };
+
+            mbp-apple-silicon =
+              { lib, ... }:
+              {
+                imports = [
+                  inputs.nixosModules.nixosModules.default
+                  ./nixos-configurations/mbp-apple-silicon
+                ];
+                nixpkgs.overlays = [ inputs.nixosModules.overlays.default ];
+                _module.args.inputs = lib.mkDefault inputs;
+              };
+          };
+
+          packages.aarch64-darwin = {
+            mbp-apple-silicon-qemu-vm = mbpAppleSiliconQemuVm;
+          };
+          apps.aarch64-darwin = {
+            mbp-apple-silicon-qemu-vm = {
+              type = "app";
+              program = "${mbpAppleSiliconQemuVm}/bin/mbp-apple-silicon-qemu-vm";
+            };
+          };
         };
-      };
     };
 }
