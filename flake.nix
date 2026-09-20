@@ -3,8 +3,8 @@
 
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
-    apple-silicon = {
-      url = "github:nix-community/nixos-apple-silicon";
+    disko = {
+      url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -96,7 +96,12 @@
       };
 
       flake = {
-        nixosConfigurations = import ./nixos-configurations inputs;
+        nixosConfigurations = (import ./nixos-configurations inputs) // {
+          mbp-apple-silicon-bootstrap = inputs.nixosModules.lib.nixosSystem {
+            modules = [ ./nixos-configurations/mbp-apple-silicon/bootstrap.nix ];
+            specialArgs = { inherit inputs; };
+          };
+        };
 
         nixosModules = {
           mbp-intel-silicon = {
