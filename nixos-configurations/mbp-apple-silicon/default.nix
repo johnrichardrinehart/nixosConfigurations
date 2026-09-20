@@ -2,6 +2,7 @@
 {
   imports = [
     ./base.nix
+    ./spice-agent.nix
   ];
 
   security.rtkit.enable = lib.mkDefault true;

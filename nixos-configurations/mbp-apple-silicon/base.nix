@@ -38,5 +38,9 @@
     };
   };
 
+  # Lets a SPICE client resize the guest displays and share the clipboard;
+  # inert when the guest is run without a SPICE channel.
+  services.spice-vdagentd.enable = lib.mkDefault true;
+
   virtualisation.diskSize = lib.mkDefault (64 * 1024);
 }
