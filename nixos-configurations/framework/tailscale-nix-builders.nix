@@ -65,6 +65,7 @@ in
 
   systemd.user.services.tailscale-nix-builders = {
     description = "Discover reachable Nix builders shared through Tailscale";
+    unitConfig.ConditionUser = primaryUser;
     wantedBy = [ "default.target" ];
     after = [ "network-online.target" ];
     serviceConfig = {
@@ -90,6 +91,7 @@ in
 
   systemd.user.timers.tailscale-nix-builders = {
     description = "Refresh Tailscale Nix builders every 60 seconds";
+    unitConfig.ConditionUser = primaryUser;
     wantedBy = [ "timers.target" ];
     timerConfig = {
       OnBootSec = "10s";
