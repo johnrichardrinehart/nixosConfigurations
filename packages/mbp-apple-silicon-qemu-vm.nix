@@ -122,6 +122,51 @@ writeShellApplication {
     dropped the moment the new client arrives. The launcher stands aside for as
     long as an --attach client is up, and resumes its own when that one leaves.
 
+    Host directories are handed to the guest over virtio-9p, one device per
+    entry in ~/guest-vm-fs-mappings.json. The file is read at every start, so
+    the set of shares changes without rebuilding anything; the devices
+    themselves are fixed once QEMU is up, so a new mapping needs a restart.
+    Either a bare array or an object with a "shares" key, whose entries are:
+
+      host   Host directory to export. Required. Absolute, no ~.
+      guest  Where the guest mounts it. Required. Absolute.
+      mode   "rw" (default) or "ro".
+      cache  9p cache mode, "none" (default), loose, readahead, mmap, fscache.
+      msize  9p packet size in bytes (default: 512000).
+      tag    Mount tag, at most 31 bytes. Defaults to the guest basename.
+      remap  Shift ownership to the guest's own user (default: false).
+
+    A mapping whose host directory is missing is reported and skipped rather
+    than kept from starting the VM, since an entry may name a volume that
+    happens not to be attached.
+
+    "ro" is enforced by QEMU, not by the guest: a readonly=on export refuses
+    every non-read-only 9p operation server side, so guest root cannot write
+    through it either.
+
+    9p reports this Mac's ownership into the guest unchanged, so a share whose
+    files are yours here belongs to uid 501 in there, and the guest's own
+    account cannot write to it however "rw" the export is. "remap" answers
+    that by laying bindfs over the mount to shift ownership onto the guest
+    user. It costs a FUSE round trip on top of every 9p one, so leave it off
+    for read-only shares, where the mode bits already allow reading.
+
+    msize defaults to 512000 because that is the ceiling, not a preference:
+    Linux's virtio transport advertises PAGE_SIZE * (VIRTQUEUE_NUM - 3), which
+    is 4096 * 125, and p9_client_create silently lowers anything larger to it.
+    QEMU would carry far more - its own limit is (VIRTQUEUE_MAX_SIZE - 2) *
+    4096, near 4 MiB - so a kernel that raises the transport limit is all that
+    stands between here and a bigger packet. Asking for more than the client
+    can do is not an error, it just quietly does not happen.
+
+    The default cache=none costs a round trip per stat, which is what makes a
+    lock file created on one side of the boundary visible to the other. 9p has
+    no leases, and cache=loose means no coherence at all, so a shared git
+    directory wants none despite the cost. Byte range locks never cross the
+    boundary at any setting: QEMU's 9p server answers every TLOCK with success
+    without taking a lock (v9fs_lock in hw/9pfs/9p.c), so flock and fcntl are
+    honoured only between guest processes.
+
     Environment:
       MBP_APPLE_VM_OUTPUTS          virtio-gpu scanouts, or auto (default: auto)
       MBP_APPLE_VM_DISPLAY          spice, cocoa or none (default: spice)
@@ -133,6 +178,8 @@ writeShellApplication {
       MBP_APPLE_VM_DISPLAY_HEIGHT   Height of each display (default: host primary)
       MBP_APPLE_VM_SSH_PORT         Host SSH forwarding port (default: 2223)
       MBP_APPLE_VM_GUEST_FLAKE      Flake the guest fetches disko scripts from
+      MBP_APPLE_VM_MAPPINGS         Shared directory table
+                                    (default: ~/guest-vm-fs-mappings.json)
       MBP_APPLE_VM_STATE_DIR        Persistent VM state directory
       MBP_APPLE_VM_BOOT_TIMEOUT     Installer shell timeout in seconds (default: 300)
       MBP_APPLE_VM_PROVISION_TIMEOUT
@@ -611,6 +658,184 @@ writeShellApplication {
       qemu_args+=(
         -drive "if=pflash,format=raw,unit=0,readonly=on,file=${qemu}/share/qemu/edk2-aarch64-code.fd"
         -drive "if=pflash,format=raw,unit=1,file=$firmware_vars"
+      )
+    fi
+
+    # Host directories exposed over virtio-9p. The table lives outside the
+    # store so the set of shares can change without rebuilding the launcher:
+    # each entry becomes an -fsdev/-device pair, and the manifest written
+    # alongside them tells the guest's vm-shares.service where each mount tag
+    # belongs. A mount tag is all the guest would otherwise have to go on, and
+    # at 31 bytes it cannot carry a path.
+    #
+    # security_model=none reports this Mac's ownership into the guest and
+    # swallows the chown it cannot perform as an unprivileged process. Nothing
+    # here remaps uids, and no security model would: mapped-xattr only records
+    # credentials for files the guest itself creates and falls back to the
+    # host's stat for everything that already exists (local_lstat in
+    # hw/9pfs/9p-local.c). The guest's primary user carries this Mac's uid
+    # instead - see shares.nix in the guest configuration.
+    #
+    # multidevs=remap because a single export can span more than one APFS
+    # volume through a firmlink, and two host devices' inode numbers would
+    # otherwise collide into one qid.
+    mappings_file="''${MBP_APPLE_VM_MAPPINGS:-$HOME/guest-vm-fs-mappings.json}"
+    manifest_tag="vm-shares"
+    manifest_dir="$state_dir/shares"
+    rm -rf "$manifest_dir"
+    mkdir -p "$manifest_dir"
+
+    share_tags=()
+    accepted=()
+    fs_index=0
+    if [[ -e "$mappings_file" ]]; then
+      if ! shares_tsv=$(jq -r '
+            def rows: if type == "array" then . else (.shares // .mappings // []) end;
+            rows
+            | map(select(type == "object"))
+            | .[]
+            | [ (.tag // ""),
+                (.host // ""),
+                (.guest // ""),
+                (.mode // "rw"),
+                (.cache // "none"),
+                ((.msize // 512000) | tostring),
+                ((.remap // false) | tostring)
+              ]
+            | join("\u001f")
+          ' "$mappings_file" 2>&1); then
+        echo "$mappings_file could not be read as a mapping table:" >&2
+        echo "$shares_tsv" >&2
+        exit 1
+      fi
+
+      # A unit separator rather than a tab: bash counts tab as IFS whitespace
+      # and collapses runs of it, so an entry that leaves "tag" to be derived
+      # would lose its empty first field and shift every other one along.
+      while IFS=$'\x1f' read -r tag host guest mode cache msize remap; do
+        # A blank line is what an empty table reads as, not a broken entry.
+        if [[ -z "$tag$host$guest" ]]; then
+          continue
+        fi
+        if [[ -z "$host" || -z "$guest" ]]; then
+          echo "a mapping needs both host and guest; skipping" >&2
+          continue
+        fi
+        # Both paths are spelled out in full, on both sides of the boundary.
+        # Nothing here expands a ~: the launcher's idea of a home directory is
+        # not the guest's, and a mapping that reads differently depending on
+        # who resolves it is a mapping waiting to land somewhere unintended.
+        if [[ "$host" != /* ]]; then
+          echo "host path $host is not absolute; skipping" >&2
+          continue
+        fi
+        if [[ "$guest" != /* ]]; then
+          echo "guest path $guest is not absolute; skipping" >&2
+          continue
+        fi
+        if [[ ! -d "$host" ]]; then
+          echo "$host is not a directory on this Mac; skipping" >&2
+          continue
+        fi
+        case "$mode" in
+          ro | rw) ;;
+          *)
+            echo "$host: mode must be ro or rw, not $mode; skipping" >&2
+            continue
+            ;;
+        esac
+        case "$cache" in
+          none | loose | readahead | mmap | fscache) ;;
+          *)
+            echo "$host: $cache is not a 9p cache mode; skipping" >&2
+            continue
+            ;;
+        esac
+        if [[ ! "$msize" =~ ^[1-9][0-9]*$ ]]; then
+          echo "$host: msize must be a positive integer, not $msize; skipping" >&2
+          continue
+        fi
+        case "$remap" in
+          true | false) ;;
+          *)
+            echo "$host: remap must be true or false, not $remap; skipping" >&2
+            continue
+            ;;
+        esac
+        if [[ -z "$tag" ]]; then
+          tag=''${guest##*/}
+        fi
+        tag=''${tag//[^A-Za-z0-9_.-]/-}
+        # MAX_TAG_LEN in hw/9pfs/9p.h is 32, and the check there is on the
+        # string without its terminator.
+        if [[ -z "$tag" ]] || (( ''${#tag} > 31 )); then
+          echo "$host: $tag is not a usable mount tag (1 to 31 bytes); skipping" >&2
+          continue
+        fi
+        duplicate=0
+        for seen in ''${share_tags[@]+"''${share_tags[@]}"}; do
+          if [[ "$seen" == "$tag" ]]; then
+            duplicate=1
+            break
+          fi
+        done
+        if (( duplicate )); then
+          echo "$host: mount tag $tag is already taken; give this mapping its" >&2
+          echo "own \"tag\" and try again; skipping" >&2
+          continue
+        fi
+
+        fsdev="local,id=fs$fs_index,path=$host,security_model=none,multidevs=remap"
+        if [[ "$mode" == ro ]]; then
+          fsdev="$fsdev,readonly=on"
+        fi
+        qemu_args+=(
+          -fsdev "$fsdev"
+          -device "virtio-9p-pci,id=fsdev$fs_index,fsdev=fs$fs_index,mount_tag=$tag"
+        )
+        share_tags+=("$tag")
+        accepted+=("$tag"$'\t'"$host"$'\t'"$guest"$'\t'"$mode"$'\t'"$cache"$'\t'"$msize"$'\t'"$remap")
+        fs_index=$(( fs_index + 1 ))
+        remapped=""
+        if [[ "$remap" == true ]]; then
+          remapped=", remapped"
+        fi
+        echo "sharing $host as $guest ($mode, cache=$cache$remapped) under mount tag $tag"
+      done <<<"$shares_tsv"
+    fi
+
+    if (( ''${#accepted[@]} > 0 )); then
+      # Exported read-only and written before QEMU starts: the guest reads this
+      # to learn where each tag goes, and has no business changing it.
+      # hostUid and hostGid are what a remapped share shifts away from. They
+      # belong here rather than in the guest because they are a property of
+      # whoever started QEMU: the 9p server acts as that user, so that is the
+      # ownership every exported file is reported under.
+      printf '%s\n' "''${accepted[@]}" | jq -R -s \
+        --argjson hostUid "$(id -u)" \
+        --argjson hostGid "$(id -g)" '
+        {
+          version: 1,
+          hostUid: $hostUid,
+          hostGid: $hostGid,
+          shares: (
+            split("\n")
+            | map(select(length > 0))
+            | map(split("\t"))
+            | map({
+                tag: .[0],
+                host: .[1],
+                guest: .[2],
+                mode: .[3],
+                cache: .[4],
+                msize: (.[5] | tonumber),
+                remap: (.[6] == "true"),
+              })
+          ),
+        }' >"$manifest_dir/manifest.json"
+      qemu_args+=(
+        -fsdev "local,id=fsmanifest,path=$manifest_dir,security_model=none,multidevs=remap,readonly=on"
+        -device "virtio-9p-pci,id=fsdevmanifest,fsdev=fsmanifest,mount_tag=$manifest_tag"
       )
     fi
 

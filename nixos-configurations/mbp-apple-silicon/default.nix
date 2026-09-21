@@ -3,6 +3,7 @@
   imports = [
     ./base.nix
     ./niri-software-egl.nix
+    ./shares.nix
     ./spice-agent.nix
   ];
 
