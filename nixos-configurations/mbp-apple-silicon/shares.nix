@@ -229,18 +229,16 @@ in
 
   # cache=none keeps no dentries: every lookup of a path component not pinned
   # by the cwd or an open file is a TWALK and a TGETATTR, about 1.4ms on this
-  # guest, and a readdir costs the host one lstat per entry. The prompt's git
-  # segment runs `git status` on every prompt, which stats every index entry,
-  # so a 1500-file worktree on a share came to 6s per prompt against 20ms
-  # without the status fetch. The share the mapping table exports is the
-  # repo-manager root, so the pattern follows that setting rather than
-  # restating the path; there is no static list of shares to derive it from,
-  # since the launcher reads that table at start. The root is a literal path,
-  # not a regex, so it is escaped before the wildcard goes on. Branch name
-  # stays, dirty and ahead/behind indicators go, only under the share.
-  dev.johnrinehart.programs.oh-my-posh.git.ignoreStatus = [
-    "${lib.escapeRegex config.dev.johnrinehart.repo-manager.settings.root}/.*"
-  ];
+  # guest, and a readdir costs the host one lstat per entry. `git status` on a
+  # 1500-file worktree under the share came to 7s of that, and the prompt runs
+  # one per command. Git's fsmonitor hook takes the stats out of it: the hook
+  # asks a watchman on the Mac what changed since the last token - it sees the
+  # host's writes and the guest's alike, since the 9p server makes the guest's
+  # as ordinary host syscalls - and git stats only those. Measured at 0.3s
+  # against 7.4s on the same worktree. The launcher runs the watchman and the
+  # bridge to it and names the bridge in the manifest; without them the hook
+  # fails and git scans as before, slower but never wrong.
+  dev.johnrinehart.programs.git.hostFsmonitor.enable = true;
 
   systemd.services.vm-shares = {
     description = "Mount the host directories exported to this guest over 9p";

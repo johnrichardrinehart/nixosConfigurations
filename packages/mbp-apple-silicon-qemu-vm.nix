@@ -18,6 +18,7 @@
   shared-mime-info,
   socat,
   spice-gtk-quartz-patched,
+  watchman,
   writeShellApplication,
 }:
 let
@@ -51,6 +52,7 @@ writeShellApplication {
     qemu
     socat
     spicyClient
+    watchman
   ];
 
   text = ''
@@ -167,6 +169,19 @@ writeShellApplication {
     without taking a lock (v9fs_lock in hw/9pfs/9p.c), so flock and fcntl are
     honoured only between guest processes.
 
+    What the guest cannot avoid paying per stat it can avoid asking for: git
+    supports an fsmonitor hook that names the paths changed since a token, and
+    the guest's hook asks a watchman running here. This Mac's watchman sees
+    both sides' writes - the guest's arrive through QEMU's 9p server as plain
+    host syscalls - so git in the guest stats only what changed instead of
+    every index entry. The launcher starts the per-user watchman service if it
+    is not up and bridges its unix socket to a loopback TCP port, which the
+    guest reaches through the user-mode network's gateway address; the port is
+    written into the shares manifest so nothing in the guest hardcodes it. The
+    bridge goes away with the launcher; the watchman service is the user's own
+    and stays. A host without a working watchman only costs the guest speed:
+    the hook fails and git scans as it otherwise would.
+
     Environment:
       MBP_APPLE_VM_OUTPUTS          virtio-gpu scanouts, or auto (default: auto)
       MBP_APPLE_VM_DISPLAY          spice, cocoa or none (default: spice)
@@ -177,6 +192,8 @@ writeShellApplication {
       MBP_APPLE_VM_DISPLAY_WIDTH    Width of each display (default: host primary)
       MBP_APPLE_VM_DISPLAY_HEIGHT   Height of each display (default: host primary)
       MBP_APPLE_VM_SSH_PORT         Host SSH forwarding port (default: 2223)
+      MBP_APPLE_VM_WATCHMAN_PORT    Loopback port bridging watchman to the guest,
+                                    0 for none (default: 2224)
       MBP_APPLE_VM_GUEST_FLAKE      Flake the guest fetches disko scripts from
       MBP_APPLE_VM_MAPPINGS         Shared directory table
                                     (default: ~/guest-vm-fs-mappings.json)
@@ -507,6 +524,7 @@ writeShellApplication {
 
     client_pid=""
     qemu_pid=""
+    bridge_pid=""
     launched=0
     cleaned=0
     cleanup() {
@@ -536,6 +554,10 @@ writeShellApplication {
       if [[ -n "$client_pid" ]]; then
         kill "$client_pid" 2>/dev/null || true
         wait "$client_pid" 2>/dev/null || true
+      fi
+      if [[ -n "$bridge_pid" ]]; then
+        kill "$bridge_pid" 2>/dev/null || true
+        wait "$bridge_pid" 2>/dev/null || true
       fi
       rm -f "$spice_socket" "$qmp_socket"
       rm -rf "$lock_dir"
@@ -585,6 +607,16 @@ writeShellApplication {
     if (exec 3<>"/dev/tcp/127.0.0.1/$ssh_port") 2>/dev/null; then
       echo "host port $ssh_port is already in use, so SSH cannot be forwarded" >&2
       echo "free it, or set MBP_APPLE_VM_SSH_PORT to another port" >&2
+      exit 1
+    fi
+    watchman_port="''${MBP_APPLE_VM_WATCHMAN_PORT:-2224}"
+    if [[ ! "$watchman_port" =~ ^[0-9]+$ ]]; then
+      echo "MBP_APPLE_VM_WATCHMAN_PORT must be a port number or 0, not '$watchman_port'" >&2
+      exit 1
+    fi
+    if (( watchman_port > 0 )) && (exec 3<>"/dev/tcp/127.0.0.1/$watchman_port") 2>/dev/null; then
+      echo "host port $watchman_port is already in use, so watchman cannot be bridged to the guest" >&2
+      echo "free it, set MBP_APPLE_VM_WATCHMAN_PORT to another port, or to 0 to go without" >&2
       exit 1
     fi
     # Every serial wait is bounded, so a guest that never reaches its shell
@@ -805,15 +837,42 @@ writeShellApplication {
     fi
 
     if (( ''${#accepted[@]} > 0 )); then
+      # The watchman bridge only means anything alongside shares: the guest's
+      # hook translates a worktree path through this manifest before asking,
+      # and a repository outside every share never gets that far.
+      #
+      # `watchman get-sockname` starts the per-user service when it is not
+      # running, in the place the user's own watchman clients expect it. The
+      # bridge is ours and dies with us; the service is not and stays. socat
+      # forks per connection, so each hook run is one short-lived TCP session
+      # onto the same unix socket.
+      bridge_port=0
+      if (( watchman_port > 0 )); then
+        if watchman_sock=$(watchman get-sockname 2>/dev/null | jq -r '.sockname // empty') \
+          && [[ -n "$watchman_sock" ]]; then
+          socat "TCP-LISTEN:$watchman_port,bind=127.0.0.1,reuseaddr,fork" \
+            "UNIX-CONNECT:$watchman_sock" &
+          bridge_pid=$!
+          bridge_port=$watchman_port
+          echo "bridging watchman at $watchman_sock to 127.0.0.1:$watchman_port for the guest"
+        else
+          echo "watchman is not available here; the guest's git will scan its worktrees itself" >&2
+        fi
+      fi
       # Exported read-only and written before QEMU starts: the guest reads this
       # to learn where each tag goes, and has no business changing it.
       # hostUid and hostGid are what a remapped share shifts away from. They
       # belong here rather than in the guest because they are a property of
       # whoever started QEMU: the 9p server acts as that user, so that is the
       # ownership every exported file is reported under.
+      #
+      # 10.0.2.2 is where QEMU's user-mode network presents this host to the
+      # guest (the default net=10.0.2.0/24); the port is only reachable there
+      # and on this Mac's own loopback.
       printf '%s\n' "''${accepted[@]}" | jq -R -s \
         --argjson hostUid "$(id -u)" \
-        --argjson hostGid "$(id -g)" '
+        --argjson hostGid "$(id -g)" \
+        --argjson bridgePort "$bridge_port" '
         {
           version: 1,
           hostUid: $hostUid,
@@ -832,6 +891,7 @@ writeShellApplication {
                 remap: (.[6] == "true"),
               })
           ),
+          watchman: (if $bridgePort > 0 then { host: "10.0.2.2", port: $bridgePort } else null end),
         }' >"$manifest_dir/manifest.json"
       qemu_args+=(
         -fsdev "local,id=fsmanifest,path=$manifest_dir,security_model=none,multidevs=remap,readonly=on"
