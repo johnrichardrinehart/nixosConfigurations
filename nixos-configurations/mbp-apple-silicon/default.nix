@@ -2,6 +2,7 @@
 {
   imports = [
     ./base.nix
+    ./forced-uid.nix
     ./niri-software-egl.nix
     ./shares.nix
     ./spice-agent.nix
