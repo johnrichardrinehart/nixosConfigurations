@@ -227,6 +227,21 @@ in
     uid = hostUid;
   };
 
+  # cache=none keeps no dentries: every lookup of a path component not pinned
+  # by the cwd or an open file is a TWALK and a TGETATTR, about 1.4ms on this
+  # guest, and a readdir costs the host one lstat per entry. The prompt's git
+  # segment runs `git status` on every prompt, which stats every index entry,
+  # so a 1500-file worktree on a share came to 6s per prompt against 20ms
+  # without the status fetch. The share the mapping table exports is the
+  # repo-manager root, so the pattern follows that setting rather than
+  # restating the path; there is no static list of shares to derive it from,
+  # since the launcher reads that table at start. The root is a literal path,
+  # not a regex, so it is escaped before the wildcard goes on. Branch name
+  # stays, dirty and ahead/behind indicators go, only under the share.
+  dev.johnrinehart.programs.oh-my-posh.git.ignoreStatus = [
+    "${lib.escapeRegex config.dev.johnrinehart.repo-manager.settings.root}/.*"
+  ];
+
   systemd.services.vm-shares = {
     description = "Mount the host directories exported to this guest over 9p";
     wantedBy = [ "multi-user.target" ];
