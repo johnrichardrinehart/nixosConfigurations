@@ -344,11 +344,11 @@
         "sops-nix": "sops-nix"
       },
       "locked": {
-        "lastModified": 1790099060,
-        "narHash": "sha256-ihHEykTUa0+atyCPFks0d4lulVYxZXN6rFAADR1YreM=",
+        "lastModified": 1790101646,
+        "narHash": "sha256-pd2iRRcUoJ8Vgjb87IlP6UlV9ZqnDj+exgR6EVx1mfI=",
         "owner": "johnrichardrinehart",
         "repo": "nixosModules",
-        "rev": "4deec4bbb7fa6869b34579e041cd26567de0c175",
+        "rev": "4ae6ff6ff2f8cbd4c4ced190c10d1dab0732dea5",
         "type": "github"
       },
       "original": {
@@ -428,11 +428,11 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1790088728,
-        "narHash": "sha256-5ynHX6D9/2DwfbEpz14X0Csp2HRx+GlhSslGNnYRyrQ=",
+        "lastModified": 1790098933,
+        "narHash": "sha256-s9m+g7r0QVZuNppIkxNznq59nldY8IuQ+iqu2ajHKLQ=",
         "owner": "johnrichardrinehart",
         "repo": "repo-manager",
-        "rev": "972cb62677e8fa32fc75b5e5c2e19229923bfcf4",
+        "rev": "b27301f16eea72c76e0592958daa461445a06881",
         "type": "github"
       },
       "original": {
