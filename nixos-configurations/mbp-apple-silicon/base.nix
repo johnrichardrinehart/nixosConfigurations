@@ -44,13 +44,25 @@
   systemd.user.extraConfig = "DefaultEnvironment=NIRI_ALLOW_SOFTWARE_EGL=1";
 
   # niri's shared config ends with `include optional=true "/tmp/niri.kdl"`, so
-  # this is where machine-local overrides go. Point niri's renderer at the
-  # primary node: virtio-gpu's render node cannot back a software EGL renderer,
-  # and Smithay registers the GPU under card0 instead. Pairs with
+  # this is where machine-local overrides go.
+  #
+  # debug: point niri's renderer at the primary node: virtio-gpu's render node
+  # cannot back a software EGL renderer, and Smithay registers the GPU under
+  # card0 instead. Pairs with
   # 0005-tty-honour-configured-node-for-software-egl.patch in nixosModules.
+  #
+  # output: QEMU advertises the MacBook panel's native mode (3024x1898) to the
+  # guest at scale 1, which leaves the bar, windows and text tiny. 1.5 gives a
+  # logical 2016x1265 - readable, with more room than an integer 2x. The
+  # launcher sizes every Virtual-N after the Mac's primary monitor, so this
+  # assumes the panel is primary and only names the first head.
   environment.etc."niri/vm-overrides.kdl".text = ''
     debug {
         render-drm-device "/dev/dri/card0"
+    }
+
+    output "Virtual-1" {
+        scale 1.5
     }
   '';
   systemd.tmpfiles.rules = [ "L+ /tmp/niri.kdl - - - - /etc/niri/vm-overrides.kdl" ];
