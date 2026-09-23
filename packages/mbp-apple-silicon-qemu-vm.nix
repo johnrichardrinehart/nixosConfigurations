@@ -182,6 +182,30 @@ writeShellApplication {
     and stays. A host without a working watchman only costs the guest speed:
     the hook fails and git scans as it otherwise would.
 
+    Both sides share each worktree's index, so this Mac's git has to agree
+    with the guest's on two settings for a shared worktree, or each side's
+    writes cost the other a full scan. core.checkStat=minimal, because the
+    guest sees remapped inode numbers (multidevs=remap) and git would
+    otherwise re-hash every file the other side last indexed; a shared
+    repository's own config is read by both sides and is the simplest place
+    for it. And the same fsmonitor: the token git keeps in the index is a
+    watchman clock, which only means something to a hook asking the same
+    watchman about the same root. The git-fsmonitor-host-watchman package
+    from the nixosModules flake runs natively here when it finds no shares
+    manifest; install it however you install packages on this Mac and scope
+    it to the shared tree, here for ~/code:
+
+      git config --global 'includeIf.gitdir:~/code/**.path' \
+        ~/.config/git/code-share.gitconfig
+      git config -f ~/.config/git/code-share.gitconfig core.fsmonitor \
+        /path/to/bin/git-fsmonitor-host-watchman
+      git config -f ~/.config/git/code-share.gitconfig core.fsmonitorHookVersion 2
+      git config -f ~/.config/git/code-share.gitconfig core.untrackedCache true
+      git config -f ~/.config/git/code-share.gitconfig core.checkStat minimal
+
+    git's builtin fsmonitor daemon (core.fsmonitor=true) keeps tokens the
+    guest's hook cannot use, and the reverse.
+
     Environment:
       MBP_APPLE_VM_OUTPUTS          virtio-gpu scanouts, or auto (default: auto)
       MBP_APPLE_VM_DISPLAY          spice, cocoa or none (default: spice)
