@@ -35,6 +35,8 @@ let
       pkgs.bindfs
       pkgs.coreutils
       pkgs.jq
+      pkgs.kmod
+      pkgs.nfs-utils
       pkgs.util-linux
     ];
     text = ''
@@ -75,7 +77,7 @@ let
       failed=0
       # A unit separator rather than a tab, which bash counts as IFS
       # whitespace and would collapse runs of.
-      while IFS=$'\x1f' read -r tag host guest mode cache msize remap; do
+      while IFS=$'\x1f' read -r tag host guest mode cache msize remap transport; do
         [[ -n "$tag" ]] || continue
 
         # The launcher rejects anything that is not absolute before it writes
@@ -104,6 +106,33 @@ let
           echo "$guest is not empty; refusing to hide what is in it behind $host." >&2
           echo "Move it aside or remove it, then: systemctl restart vm-shares" >&2
           failed=1
+          continue
+        fi
+
+        if [[ "$transport" == nfs ]]; then
+          # The launcher only says nfs when this Mac exports $host to
+          # localhost, which is where the user-mode network's 10.0.2.2 lands.
+          # actimeo=1: attributes and lookups - negative ones included
+          # (lookupcache=all) - are trusted for at most a second, on top of
+          # close-to-open. Exclusive create is decided by the server, so lock
+          # files still exclude across the boundary; byte-range locks do not,
+          # as with 9p (nolock). hard: a Mac that stops answering stalls I/O
+          # rather than failing it.
+          opts="vers=3,proto=tcp,mountproto=tcp,hard,nolock,actimeo=1,lookupcache=all,rsize=1048576,wsize=1048576"
+          if [[ "$mode" == ro ]]; then
+            opts="$opts,ro"
+          fi
+          if [[ ! -d "$guest" ]]; then
+            mkdir -p "$guest"
+            chown "${primaryUser}" "$guest" || true
+          fi
+          modprobe nfs
+          if mount.nfs "10.0.2.2:$host" "$guest" -o "$opts"; then
+            echo "mounted $host at $guest ($mode, nfs)"
+          else
+            echo "could not mount 10.0.2.2:$host at $guest over nfs" >&2
+            failed=1
+          fi
           continue
         fi
 
@@ -190,7 +219,7 @@ let
         fi
       done < <(jq -r '
         .shares[]
-        | [.tag, .host, .guest, .mode, .cache, (.msize | tostring), (.remap | tostring)]
+        | [.tag, .host, .guest, .mode, .cache, (.msize | tostring), (.remap | tostring), (.transport // "9p")]
         | join("\u001f")
       ' "$manifest")
 
@@ -418,9 +447,15 @@ in
   ];
 
   systemd.services.vm-shares = {
-    description = "Mount the host directories exported to this guest over 9p";
+    description = "Mount the host directories exported to this guest over 9p or NFS";
     wantedBy = [ "multi-user.target" ];
-    after = [ "local-fs.target" ];
+    # NFS shares need the user-mode network up to reach 10.0.2.2; 9p ones
+    # don't, but one service mounts both.
+    wants = [ "network-online.target" ];
+    after = [
+      "local-fs.target"
+      "network-online.target"
+    ];
     # The session should find its shares already in place rather than racing
     # them. Ordering against a unit that does not exist is a no-op, so this
     # costs nothing on a guest booted without a display.

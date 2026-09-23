@@ -137,6 +137,31 @@ writeShellApplication {
       msize  9p packet size in bytes (default: 512000).
       tag    Mount tag, at most 31 bytes. Defaults to the guest basename.
       remap  Shift ownership to the guest's own user (default: false).
+      transport
+             "9p" (default) or "nfs". cache, msize, tag and remap are 9p's.
+
+    "nfs" has the guest mount the directory from this Mac's own nfsd, over
+    the user-mode network, instead of from QEMU's 9p server. It is much
+    faster for metadata: the guest caches attributes and lookups for at most
+    a second (actimeo=1), with close-to-open consistency and server-side
+    exclusive create, where 9p can only choose between no caching and no
+    coherence. It also reports this Mac's own inode numbers, so git and
+    libgit2 indexes written on either side stay valid on the other. What
+    it costs: a file created here can take up to a second to appear to a
+    guest that has just looked for it and found nothing. The export needs
+    root, so it is this Mac's to set up, once; the launcher checks that the
+    directory is exported to localhost and uses 9p when it is not:
+
+      # /etc/exports (exports(5) has no trailing comments)
+      /absolute/host/dir -alldirs -mapall=<uid>:<gid> localhost
+      # /etc/nfs.conf: the guest's traffic arrives from unreserved ports
+      nfs.server.require_resv_port = 0
+      nfs.server.mount.require_resv_port = 0
+
+      sudo nfsd enable && sudo nfsd restart && showmount -e localhost
+
+    <uid>:<gid> is `id -u`:`id -g`. If the guest cannot read files, give
+    /sbin/nfsd Full Disk Access and restart it.
 
     A mapping whose host directory is missing is reported and skipped rather
     than kept from starting the VM, since an entry may name a volume that
@@ -756,7 +781,8 @@ writeShellApplication {
                 (.mode // "rw"),
                 (.cache // "none"),
                 ((.msize // 512000) | tostring),
-                ((.remap // false) | tostring)
+                ((.remap // false) | tostring),
+                (.transport // "9p")
               ]
             | join("\u001f")
           ' "$mappings_file" 2>&1); then
@@ -768,7 +794,7 @@ writeShellApplication {
       # A unit separator rather than a tab: bash counts tab as IFS whitespace
       # and collapses runs of it, so an entry that leaves "tag" to be derived
       # would lose its empty first field and shift every other one along.
-      while IFS=$'\x1f' read -r tag host guest mode cache msize remap; do
+      while IFS=$'\x1f' read -r tag host guest mode cache msize remap transport; do
         # A blank line is what an empty table reads as, not a broken entry.
         if [[ -z "$tag$host$guest" ]]; then
           continue
@@ -818,6 +844,26 @@ writeShellApplication {
             continue
             ;;
         esac
+        case "$transport" in
+          9p) ;;
+          nfs)
+            if [[ "$remap" == true ]]; then
+              echo "$host: remap applies to 9p only; the NFS export maps ownership itself; skipping" >&2
+              continue
+            fi
+            # The export is this Mac's to configure (it needs root); all the
+            # launcher can do is check that it is there, and hand the guest
+            # the 9p share it would otherwise have had when it is not.
+            if ! /usr/bin/showmount -e localhost 2>/dev/null | awk '{print $1}' | grep -qxF "$host"; then
+              echo "$host is not exported over NFS to localhost; sharing it over 9p instead" >&2
+              transport=9p
+            fi
+            ;;
+          *)
+            echo "$host: transport must be 9p or nfs, not $transport; skipping" >&2
+            continue
+            ;;
+        esac
         if [[ -z "$tag" ]]; then
           tag=''${guest##*/}
         fi
@@ -841,17 +887,23 @@ writeShellApplication {
           continue
         fi
 
-        fsdev="local,id=fs$fs_index,path=$host,security_model=none,multidevs=remap"
-        if [[ "$mode" == ro ]]; then
-          fsdev="$fsdev,readonly=on"
+        if [[ "$transport" == 9p ]]; then
+          fsdev="local,id=fs$fs_index,path=$host,security_model=none,multidevs=remap"
+          if [[ "$mode" == ro ]]; then
+            fsdev="$fsdev,readonly=on"
+          fi
+          qemu_args+=(
+            -fsdev "$fsdev"
+            -device "virtio-9p-pci,id=fsdev$fs_index,fsdev=fs$fs_index,mount_tag=$tag"
+          )
+          fs_index=$(( fs_index + 1 ))
         fi
-        qemu_args+=(
-          -fsdev "$fsdev"
-          -device "virtio-9p-pci,id=fsdev$fs_index,fsdev=fs$fs_index,mount_tag=$tag"
-        )
         share_tags+=("$tag")
-        accepted+=("$tag"$'\t'"$host"$'\t'"$guest"$'\t'"$mode"$'\t'"$cache"$'\t'"$msize"$'\t'"$remap")
-        fs_index=$(( fs_index + 1 ))
+        accepted+=("$tag"$'\t'"$host"$'\t'"$guest"$'\t'"$mode"$'\t'"$cache"$'\t'"$msize"$'\t'"$remap"$'\t'"$transport")
+        if [[ "$transport" == nfs ]]; then
+          echo "sharing $host as $guest ($mode) over NFS from 10.0.2.2"
+          continue
+        fi
         remapped=""
         if [[ "$remap" == true ]]; then
           remapped=", remapped"
@@ -913,6 +965,7 @@ writeShellApplication {
                 cache: .[4],
                 msize: (.[5] | tonumber),
                 remap: (.[6] == "true"),
+                transport: .[7],
               })
           ),
           watchman: (if $bridgePort > 0 then { host: "10.0.2.2", port: $bridgePort } else null end),
