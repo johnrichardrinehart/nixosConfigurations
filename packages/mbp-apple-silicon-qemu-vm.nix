@@ -18,7 +18,6 @@
   shared-mime-info,
   socat,
   spice-gtk-quartz-patched,
-  watchman,
   writeShellApplication,
 }:
 let
@@ -52,7 +51,6 @@ writeShellApplication {
     qemu
     socat
     spicyClient
-    watchman
   ];
 
   text = ''
@@ -107,7 +105,7 @@ writeShellApplication {
     need not carry this host at all - the guest then fails with "does not
     provide attribute". --guest-flake names a different one: a branch, a
     revision, or anything else nix will fetch from inside the guest. A path on
-    this Mac only works if the guest can reach it, which for now means a share.
+    this Mac is out of its reach: shares run the other way.
 
     One VM per state directory, held with a lock on it, so a second invocation
     is refused rather than deleting the running VM's SPICE socket on its way to
@@ -124,112 +122,47 @@ writeShellApplication {
     dropped the moment the new client arrives. The launcher stands aside for as
     long as an --attach client is up, and resumes its own when that one leaves.
 
-    Host directories are handed to the guest over virtio-9p, one device per
-    entry in ~/guest-vm-fs-mappings.json. The file is read at every start, so
-    the set of shares changes without rebuilding anything; the devices
-    themselves are fixed once QEMU is up, so a new mapping needs a restart.
-    Either a bare array or an object with a "shares" key, whose entries are:
+    Directories on the guest's own disk are mounted on this Mac over NFS, one
+    mount per entry in ~/guest-vm-fs-mappings.json. The data lives in the
+    guest, which does nearly all the work on it, and this Mac - which only
+    looks now and then - is the side that pays for the network. The file is
+    read at every start, so the set of shares changes without rebuilding
+    anything. Either a bare array or an object with a "shares" key, whose
+    entries are:
 
-      host   Host directory to export. Required. Absolute, no ~.
-      guest  Where the guest mounts it. Required. Absolute.
+      host   Where this Mac mounts the directory. Required. Absolute, no ~.
+      guest  The guest directory to export. Required. Absolute, no whitespace.
       mode   "rw" (default) or "ro".
-      cache  9p cache mode, "none" (default), loose, readahead, mmap, fscache.
-      msize  9p packet size in bytes (default: 512000).
-      tag    Mount tag, at most 31 bytes. Defaults to the guest basename.
-      remap  Shift ownership to the guest's own user (default: false).
       transport
-             "9p" (default) or "nfs". cache, msize, tag and remap are 9p's.
+             "nfs" (default), the only one there is.
 
-    "nfs" has the guest mount the directory from this Mac's own nfsd, over
-    the user-mode network, instead of from QEMU's 9p server. It is much
-    faster for metadata: the guest caches attributes and lookups for at most
-    a second (actimeo=1), with close-to-open consistency and server-side
-    exclusive create, where 9p can only choose between no caching and no
-    coherence. It also reports this Mac's own inode numbers, so git and
-    libgit2 indexes written on either side stay valid on the other. What
-    it costs: a file created here can take up to a second to appear to a
-    guest that has just looked for it and found nothing. The export needs
-    root, so it is this Mac's to set up, once; the launcher checks that the
-    directory is exported to localhost and uses 9p when it is not:
+    Other keys - cache, msize and tag, and a remap of false - are left over
+    from the 9p share this replaced and are ignored; "remap": true is refused.
 
-      # /etc/exports (exports(5) has no trailing comments)
-      /absolute/host/dir -alldirs -mapall=<uid>:<gid> localhost
-      # /etc/nfs.conf: the guest's traffic arrives from unreserved ports
-      nfs.server.require_resv_port = 0
-      nfs.server.mount.require_resv_port = 0
+    The guest's nfsd and mountd are forwarded to MBP_APPLE_VM_NFS_PORT and
+    MBP_APPLE_VM_MOUNTD_PORT on this Mac's loopback, and once the guest
+    exports a share the launcher mounts it with mount_nfs - as you, not root:
+    macOS lets a user mount onto a directory they own. The guest squashes
+    every request to its own account, so what this Mac writes lands owned by
+    that account; it also means any account on this Mac that can reach its
+    loopback can reach the share.
 
-      sudo nfsd enable && sudo nfsd restart && showmount -e localhost
+    A host directory has to be empty or missing (it is then created).
+    Mounting over one with something in it would hide it, and anything aimed
+    at the hidden copy would travel through the mount into the guest instead.
+    A .DS_Store is the one thing allowed to be there.
 
-    <uid>:<gid> is `id -u`:`id -g`. If the guest cannot read files, give
-    /sbin/nfsd Full Disk Access and restart it.
+    The mounts are soft and interruptible with deadtimeout=60: when the guest
+    stops answering, calls fail rather than hang, and macOS drops the mount
+    after a minute. The launcher unmounts them before the guest goes down - on
+    exit, and first thing under --stop - so what this Mac has buffered reaches
+    the guest while it can still take it. Byte-range locks stay on this Mac
+    (locallocks) and never meet the guest's; exclusive create is decided by
+    the guest, so lock files do exclude across the boundary.
 
-    A mapping whose host directory is missing is reported and skipped rather
-    than kept from starting the VM, since an entry may name a volume that
-    happens not to be attached.
-
-    "ro" is enforced by QEMU, not by the guest: a readonly=on export refuses
-    every non-read-only 9p operation server side, so guest root cannot write
-    through it either.
-
-    9p reports this Mac's ownership into the guest unchanged, so a share whose
-    files are yours here belongs to uid 501 in there, and the guest's own
-    account cannot write to it however "rw" the export is. "remap" answers
-    that by laying bindfs over the mount to shift ownership onto the guest
-    user. It costs a FUSE round trip on top of every 9p one, so leave it off
-    for read-only shares, where the mode bits already allow reading.
-
-    msize defaults to 512000 because that is the ceiling, not a preference:
-    Linux's virtio transport advertises PAGE_SIZE * (VIRTQUEUE_NUM - 3), which
-    is 4096 * 125, and p9_client_create silently lowers anything larger to it.
-    QEMU would carry far more - its own limit is (VIRTQUEUE_MAX_SIZE - 2) *
-    4096, near 4 MiB - so a kernel that raises the transport limit is all that
-    stands between here and a bigger packet. Asking for more than the client
-    can do is not an error, it just quietly does not happen.
-
-    The default cache=none costs a round trip per stat, which is what makes a
-    lock file created on one side of the boundary visible to the other. 9p has
-    no leases, and cache=loose means no coherence at all, so a shared git
-    directory wants none despite the cost. Byte range locks never cross the
-    boundary at any setting: QEMU's 9p server answers every TLOCK with success
-    without taking a lock (v9fs_lock in hw/9pfs/9p.c), so flock and fcntl are
-    honoured only between guest processes.
-
-    What the guest cannot avoid paying per stat it can avoid asking for: git
-    supports an fsmonitor hook that names the paths changed since a token, and
-    the guest's hook asks a watchman running here. This Mac's watchman sees
-    both sides' writes - the guest's arrive through QEMU's 9p server as plain
-    host syscalls - so git in the guest stats only what changed instead of
-    every index entry. The launcher starts the per-user watchman service if it
-    is not up and bridges its unix socket to a loopback TCP port, which the
-    guest reaches through the user-mode network's gateway address; the port is
-    written into the shares manifest so nothing in the guest hardcodes it. The
-    bridge goes away with the launcher; the watchman service is the user's own
-    and stays. A host without a working watchman only costs the guest speed:
-    the hook fails and git scans as it otherwise would.
-
-    Both sides share each worktree's index, so this Mac's git has to agree
-    with the guest's on two settings for a shared worktree, or each side's
-    writes cost the other a full scan. core.checkStat=minimal, because the
-    guest sees remapped inode numbers (multidevs=remap) and git would
-    otherwise re-hash every file the other side last indexed; a shared
-    repository's own config is read by both sides and is the simplest place
-    for it. And the same fsmonitor: the token git keeps in the index is a
-    watchman clock, which only means something to a hook asking the same
-    watchman about the same root. The git-fsmonitor-host-watchman package
-    from the nixosModules flake runs natively here when it finds no shares
-    manifest; install it however you install packages on this Mac and scope
-    it to the shared tree, here for ~/code:
-
-      git config --global 'includeIf.gitdir:~/code/**.path' \
-        ~/.config/git/code-share.gitconfig
-      git config -f ~/.config/git/code-share.gitconfig core.fsmonitor \
-        /path/to/bin/git-fsmonitor-host-watchman
-      git config -f ~/.config/git/code-share.gitconfig core.fsmonitorHookVersion 2
-      git config -f ~/.config/git/code-share.gitconfig core.untrackedCache true
-      git config -f ~/.config/git/code-share.gitconfig core.checkStat minimal
-
-    git's builtin fsmonitor daemon (core.fsmonitor=true) keeps tokens the
-    guest's hook cannot use, and the reverse.
+    FSEvents does not see the guest's writes, so nothing on this Mac should
+    watch the mount: a watchman-backed git fsmonitor would report stale
+    status. Let git scan it.
 
     Environment:
       MBP_APPLE_VM_OUTPUTS          virtio-gpu scanouts, or auto (default: auto)
@@ -241,8 +174,13 @@ writeShellApplication {
       MBP_APPLE_VM_DISPLAY_WIDTH    Width of each display (default: host primary)
       MBP_APPLE_VM_DISPLAY_HEIGHT   Height of each display (default: host primary)
       MBP_APPLE_VM_SSH_PORT         Host SSH forwarding port (default: 2223)
-      MBP_APPLE_VM_WATCHMAN_PORT    Loopback port bridging watchman to the guest,
-                                    0 for none (default: 2224)
+      MBP_APPLE_VM_NFS_PORT         Loopback port forwarded to the guest's nfsd
+                                    (default: 2225)
+      MBP_APPLE_VM_MOUNTD_PORT      Loopback port forwarded to the guest's mountd
+                                    (default: 2226)
+      MBP_APPLE_VM_NFS_TIMEOUT      Seconds to wait for the guest to export its
+                                    shares before giving up on mounting them
+                                    (default: 300)
       MBP_APPLE_VM_GUEST_FLAKE      Flake the guest fetches disko scripts from
       MBP_APPLE_VM_MAPPINGS         Shared directory table
                                     (default: ~/guest-vm-fs-mappings.json)
@@ -353,6 +291,10 @@ writeShellApplication {
     qmp_socket="$state_dir/qmp.sock"
     qemu_pidfile="$state_dir/qemu.pid"
     attach_pidfile="$state_dir/attach.pid"
+    # Every host directory this launcher has mounted from the guest, one per
+    # line, so that --stop, from another invocation, can unmount them before
+    # the guest goes down.
+    mounts_file="$state_dir/nfs-mounts"
 
     # Both sockets are addressed by their path, and sockaddr_un on Darwin holds
     # only 104 bytes of one, terminator included. Left alone, QEMU fails to bind
@@ -389,6 +331,26 @@ writeShellApplication {
       [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
       kill -0 "$pid" 2>/dev/null || return 1
       printf '%s\n' "$pid"
+    }
+
+    # Plain first, so whatever this Mac has buffered reaches the guest while it
+    # can still take it; forced when something holds the mount open. With the
+    # guest already gone a plain unmount would only sit out the soft mount's
+    # retransmissions, so "force" goes straight to it.
+    unmount_shares() {
+      local how=''${1:-} dir
+      [[ -s "$mounts_file" ]] || return 0
+      while IFS= read -r dir; do
+        [[ -n "$dir" ]] || continue
+        if [[ "$how" != force ]] && /sbin/umount "$dir" 2>/dev/null; then
+          echo "unmounted $dir"
+        elif /sbin/umount -f "$dir"; then
+          echo "unmounted $dir (forced)"
+        else
+          echo "could not unmount $dir; run: umount -f '$dir'" >&2
+        fi
+      done <"$mounts_file"
+      rm -f "$mounts_file"
     }
 
     if (( attach && stop )); then
@@ -447,6 +409,7 @@ writeShellApplication {
         echo "MBP_APPLE_VM_STOP_TIMEOUT must be a non-negative integer" >&2
         exit 1
       fi
+      unmount_shares
       if [[ -S "$qmp_socket" ]]; then
         # An ACPI power button press, so the guest unmounts its filesystems on
         # the way down. SIGTERM only ends QEMU, which the guest experiences as
@@ -569,11 +532,11 @@ writeShellApplication {
 
     # Anything still in here belongs to a launcher that is gone, and QEMU will
     # not bind a unix socket onto a path that already exists.
-    rm -f "$qmp_socket" "$qemu_pidfile"
+    rm -f "$qmp_socket" "$qemu_pidfile" "$mounts_file"
 
     client_pid=""
     qemu_pid=""
-    bridge_pid=""
+    mounter_pid=""
     launched=0
     cleaned=0
     cleanup() {
@@ -581,7 +544,18 @@ writeShellApplication {
         return 0
       fi
       cleaned=1
-      # QEMU goes first, and the client after. The client subshell spends its
+      # The mounter first, so it cannot mount anything behind the unmount, and
+      # then the shares, while the guest can still answer for them.
+      if [[ -n "$mounter_pid" ]]; then
+        kill "$mounter_pid" 2>/dev/null || true
+        wait "$mounter_pid" 2>/dev/null || true
+      fi
+      if vm_pid >/dev/null; then
+        unmount_shares
+      else
+        unmount_shares force
+      fi
+      # QEMU goes next, and the client after. The client subshell spends its
       # life waiting on spicy in the foreground, so a signal to it would sit
       # undelivered until spicy exited; ending QEMU closes the SPICE socket,
       # which brings spicy down on its own and lets that wait finish promptly.
@@ -603,10 +577,6 @@ writeShellApplication {
       if [[ -n "$client_pid" ]]; then
         kill "$client_pid" 2>/dev/null || true
         wait "$client_pid" 2>/dev/null || true
-      fi
-      if [[ -n "$bridge_pid" ]]; then
-        kill "$bridge_pid" 2>/dev/null || true
-        wait "$bridge_pid" 2>/dev/null || true
       fi
       rm -f "$spice_socket" "$qmp_socket"
       rm -rf "$lock_dir"
@@ -658,16 +628,7 @@ writeShellApplication {
       echo "free it, or set MBP_APPLE_VM_SSH_PORT to another port" >&2
       exit 1
     fi
-    watchman_port="''${MBP_APPLE_VM_WATCHMAN_PORT:-2224}"
-    if [[ ! "$watchman_port" =~ ^[0-9]+$ ]]; then
-      echo "MBP_APPLE_VM_WATCHMAN_PORT must be a port number or 0, not '$watchman_port'" >&2
-      exit 1
-    fi
-    if (( watchman_port > 0 )) && (exec 3<>"/dev/tcp/127.0.0.1/$watchman_port") 2>/dev/null; then
-      echo "host port $watchman_port is already in use, so watchman cannot be bridged to the guest" >&2
-      echo "free it, set MBP_APPLE_VM_WATCHMAN_PORT to another port, or to 0 to go without" >&2
-      exit 1
-    fi
+    netdev="user,id=net0,hostfwd=tcp:127.0.0.1:$ssh_port-:22"
     # Every serial wait is bounded, so a guest that never reaches its shell
     # fails instead of blocking the launcher forever.
     boot_timeout="''${MBP_APPLE_VM_BOOT_TIMEOUT:-300}"
@@ -700,8 +661,6 @@ writeShellApplication {
       -device "virtconsole,chardev=console"
       -drive "if=none,id=root,format=raw,file=$disk"
       -device "virtio-blk-pci,drive=root,bootindex=0"
-      -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:$ssh_port-:22"
-      -device "virtio-net-pci,netdev=net0"
       -serial none
       -monitor none
       # The control channel that survives losing the display: --stop powers the
@@ -742,47 +701,86 @@ writeShellApplication {
       )
     fi
 
-    # Host directories exposed over virtio-9p. The table lives outside the
-    # store so the set of shares can change without rebuilding the launcher:
-    # each entry becomes an -fsdev/-device pair, and the manifest written
-    # alongside them tells the guest's vm-shares.service where each mount tag
-    # belongs. A mount tag is all the guest would otherwise have to go on, and
-    # at 31 bytes it cannot carry a path.
-    #
-    # security_model=none reports this Mac's ownership into the guest and
-    # swallows the chown it cannot perform as an unprivileged process. Nothing
-    # here remaps uids, and no security model would: mapped-xattr only records
-    # credentials for files the guest itself creates and falls back to the
-    # host's stat for everything that already exists (local_lstat in
-    # hw/9pfs/9p-local.c). The guest's primary user carries this Mac's uid
-    # instead - see shares.nix in the guest configuration.
-    #
-    # multidevs=remap because a single export can span more than one APFS
-    # volume through a firmlink, and two host devices' inode numbers would
-    # otherwise collide into one qid.
+    # Guest directories this Mac mounts over NFS; the usage text above has the
+    # table and the reasons. The manifest written here tells the guest's
+    # vm-shares.service which of its directories to export, and reaches it
+    # over the one 9p device left: a read-only export of the manifest's own
+    # directory, found by a mount tag fixed at build time.
     mappings_file="''${MBP_APPLE_VM_MAPPINGS:-$HOME/guest-vm-fs-mappings.json}"
     manifest_tag="vm-shares"
     manifest_dir="$state_dir/shares"
     rm -rf "$manifest_dir"
     mkdir -p "$manifest_dir"
 
-    share_tags=()
-    accepted=()
-    fs_index=0
-    if [[ -e "$mappings_file" ]]; then
+    # mountdPort in the guest's shares.nix; the two must agree. nfsd is on
+    # 2049 in there.
+    guest_mountd_port=20048
+
+    # A glob rather than ls, so a name with a newline in it cannot be read as
+    # two entries. Finder leaves a .DS_Store in any directory it has shown, and
+    # hiding that under a mount loses nothing.
+    dir_is_empty() {
+      local entry
+      local -a entries=()
+      shopt -s nullglob dotglob
+      entries=("$1"/*)
+      shopt -u nullglob dotglob
+      for entry in ''${entries[@]+"''${entries[@]}"}; do
+        [[ "''${entry##*/}" == .DS_Store ]] || return 1
+      done
+    }
+
+    # The mount(8) line for whatever is mounted on $1, if anything.
+    mount_line() {
+      /sbin/mount | awk -v needle=" on $1 (" 'index($0, needle) { print; exit }'
+    }
+
+    # Leaves $1 an empty directory the guest's $2 can be mounted on, or says
+    # why it cannot be.
+    prepare_mount_point() {
+      local dir=$1 guest=$2 line
+      line=$(mount_line "$dir")
+      if [[ -n "$line" ]]; then
+        if [[ "$line" != "127.0.0.1:$guest on $dir ("* ]]; then
+          echo "$dir already has something else mounted on it ($line); skipping" >&2
+          return 1
+        fi
+        # From a launcher that never got to clean up; the guest behind it is
+        # gone.
+        echo "unmounting a stale mount of the guest's $guest at $dir"
+        if ! /sbin/umount -f "$dir"; then
+          echo "could not unmount it; skipping $dir" >&2
+          return 1
+        fi
+      fi
+      if [[ -e "$dir" && ! -d "$dir" ]]; then
+        echo "$dir exists and is not a directory; skipping" >&2
+        return 1
+      fi
+      mkdir -p "$dir"
+      if ! dir_is_empty "$dir"; then
+        echo "$dir is not empty; refusing to hide what is in it behind the guest's $guest." >&2
+        echo "Whatever is there belongs in the guest: move it aside and start again." >&2
+        return 1
+      fi
+    }
+
+    shares=()
+    if (( installer )); then
+      if [[ -e "$mappings_file" ]]; then
+        echo "the installer exports nothing; $mappings_file applies once the installed system boots"
+      fi
+    elif [[ -e "$mappings_file" ]]; then
       if ! shares_tsv=$(jq -r '
             def rows: if type == "array" then . else (.shares // .mappings // []) end;
             rows
             | map(select(type == "object"))
             | .[]
-            | [ (.tag // ""),
-                (.host // ""),
+            | [ (.host // ""),
                 (.guest // ""),
                 (.mode // "rw"),
-                (.cache // "none"),
-                ((.msize // 512000) | tostring),
-                ((.remap // false) | tostring),
-                (.transport // "9p")
+                (.transport // "nfs"),
+                ((.remap // false) | tostring)
               ]
             | join("\u001f")
           ' "$mappings_file" 2>&1); then
@@ -792,11 +790,11 @@ writeShellApplication {
       fi
 
       # A unit separator rather than a tab: bash counts tab as IFS whitespace
-      # and collapses runs of it, so an entry that leaves "tag" to be derived
-      # would lose its empty first field and shift every other one along.
-      while IFS=$'\x1f' read -r tag host guest mode cache msize remap transport; do
+      # and collapses runs of it, so an empty field would shift every other
+      # one along.
+      while IFS=$'\x1f' read -r host guest mode transport remap; do
         # A blank line is what an empty table reads as, not a broken entry.
-        if [[ -z "$tag$host$guest" ]]; then
+        if [[ -z "$host$guest" ]]; then
           continue
         fi
         if [[ -z "$host" || -z "$guest" ]]; then
@@ -815,8 +813,10 @@ writeShellApplication {
           echo "guest path $guest is not absolute; skipping" >&2
           continue
         fi
-        if [[ ! -d "$host" ]]; then
-          echo "$host is not a directory on this Mac; skipping" >&2
+        # The guest writes its path into exports(5), which separates fields
+        # with whitespace, and the rows kept below are tab-separated.
+        if [[ "$guest" =~ [[:space:]] || "$host" == *$'\t'* ]]; then
+          echo "$host: guest paths cannot contain whitespace, nor host paths tabs; skipping" >&2
           continue
         fi
         case "$mode" in
@@ -826,155 +826,132 @@ writeShellApplication {
             continue
             ;;
         esac
-        case "$cache" in
-          none | loose | readahead | mmap | fscache) ;;
-          *)
-            echo "$host: $cache is not a 9p cache mode; skipping" >&2
-            continue
-            ;;
-        esac
-        if [[ ! "$msize" =~ ^[1-9][0-9]*$ ]]; then
-          echo "$host: msize must be a positive integer, not $msize; skipping" >&2
+        if [[ "$transport" != nfs ]]; then
+          echo "$host: transport must be nfs, the only one the guest exports over, not $transport; skipping" >&2
           continue
         fi
-        case "$remap" in
-          true | false) ;;
-          *)
-            echo "$host: remap must be true or false, not $remap; skipping" >&2
-            continue
-            ;;
-        esac
-        case "$transport" in
-          9p) ;;
-          nfs)
-            if [[ "$remap" == true ]]; then
-              echo "$host: remap applies to 9p only; the NFS export maps ownership itself; skipping" >&2
-              continue
-            fi
-            # The export is this Mac's to configure (it needs root); all the
-            # launcher can do is check that it is there, and hand the guest
-            # the 9p share it would otherwise have had when it is not.
-            if ! /usr/bin/showmount -e localhost 2>/dev/null | awk '{print $1}' | grep -qxF "$host"; then
-              echo "$host is not exported over NFS to localhost; sharing it over 9p instead" >&2
-              transport=9p
-            fi
-            ;;
-          *)
-            echo "$host: transport must be 9p or nfs, not $transport; skipping" >&2
-            continue
-            ;;
-        esac
-        if [[ -z "$tag" ]]; then
-          tag=''${guest##*/}
-        fi
-        tag=''${tag//[^A-Za-z0-9_.-]/-}
-        # MAX_TAG_LEN in hw/9pfs/9p.h is 32, and the check there is on the
-        # string without its terminator.
-        if [[ -z "$tag" ]] || (( ''${#tag} > 31 )); then
-          echo "$host: $tag is not a usable mount tag (1 to 31 bytes); skipping" >&2
+        if [[ "$remap" != false ]]; then
+          echo "$host: remap belonged to the 9p share; the guest already answers as its own account; skipping" >&2
           continue
         fi
         duplicate=0
-        for seen in ''${share_tags[@]+"''${share_tags[@]}"}; do
-          if [[ "$seen" == "$tag" ]]; then
+        for seen in ''${shares[@]+"''${shares[@]}"}; do
+          IFS=$'\t' read -r seen_host seen_guest _ <<<"$seen"
+          if [[ "$seen_host" == "$host" || "$seen_guest" == "$guest" ]]; then
             duplicate=1
             break
           fi
         done
         if (( duplicate )); then
-          echo "$host: mount tag $tag is already taken; give this mapping its" >&2
-          echo "own \"tag\" and try again; skipping" >&2
+          echo "$host: another mapping already uses $host or $guest; skipping" >&2
           continue
         fi
-
-        if [[ "$transport" == 9p ]]; then
-          fsdev="local,id=fs$fs_index,path=$host,security_model=none,multidevs=remap"
-          if [[ "$mode" == ro ]]; then
-            fsdev="$fsdev,readonly=on"
-          fi
-          qemu_args+=(
-            -fsdev "$fsdev"
-            -device "virtio-9p-pci,id=fsdev$fs_index,fsdev=fs$fs_index,mount_tag=$tag"
-          )
-          fs_index=$(( fs_index + 1 ))
-        fi
-        share_tags+=("$tag")
-        accepted+=("$tag"$'\t'"$host"$'\t'"$guest"$'\t'"$mode"$'\t'"$cache"$'\t'"$msize"$'\t'"$remap"$'\t'"$transport")
-        if [[ "$transport" == nfs ]]; then
-          echo "sharing $host as $guest ($mode) over NFS from 10.0.2.2"
+        if ! prepare_mount_point "$host" "$guest"; then
           continue
         fi
-        remapped=""
-        if [[ "$remap" == true ]]; then
-          remapped=", remapped"
-        fi
-        echo "sharing $host as $guest ($mode, cache=$cache$remapped) under mount tag $tag"
+        shares+=("$host"$'\t'"$guest"$'\t'"$mode")
+        echo "mounting the guest's $guest at $host ($mode) once the guest exports it"
       done <<<"$shares_tsv"
     fi
 
-    if (( ''${#accepted[@]} > 0 )); then
-      # The watchman bridge only means anything alongside shares: the guest's
-      # hook translates a worktree path through this manifest before asking,
-      # and a repository outside every share never gets that far.
-      #
-      # `watchman get-sockname` starts the per-user service when it is not
-      # running, in the place the user's own watchman clients expect it. The
-      # bridge is ours and dies with us; the service is not and stays. socat
-      # forks per connection, so each hook run is one short-lived TCP session
-      # onto the same unix socket.
-      bridge_port=0
-      if (( watchman_port > 0 )); then
-        if watchman_sock=$(watchman get-sockname 2>/dev/null | jq -r '.sockname // empty') \
-          && [[ -n "$watchman_sock" ]]; then
-          socat "TCP-LISTEN:$watchman_port,bind=127.0.0.1,reuseaddr,fork" \
-            "UNIX-CONNECT:$watchman_sock" &
-          bridge_pid=$!
-          bridge_port=$watchman_port
-          echo "bridging watchman at $watchman_sock to 127.0.0.1:$watchman_port for the guest"
-        else
-          echo "watchman is not available here; the guest's git will scan its worktrees itself" >&2
+    if (( ''${#shares[@]} > 0 )); then
+      nfs_port="''${MBP_APPLE_VM_NFS_PORT:-2225}"
+      mountd_port="''${MBP_APPLE_VM_MOUNTD_PORT:-2226}"
+      nfs_timeout="''${MBP_APPLE_VM_NFS_TIMEOUT:-300}"
+      for setting in "MBP_APPLE_VM_NFS_PORT=$nfs_port" "MBP_APPLE_VM_MOUNTD_PORT=$mountd_port" \
+        "MBP_APPLE_VM_NFS_TIMEOUT=$nfs_timeout"; do
+        if [[ ! "''${setting#*=}" =~ ^[1-9][0-9]*$ ]]; then
+          echo "''${setting%%=*} must be a positive integer, not ''${setting#*=}" >&2
+          exit 1
         fi
+      done
+      if (( nfs_port == mountd_port || nfs_port == ssh_port || mountd_port == ssh_port )); then
+        echo "SSH, NFS and mountd need three different host ports, not $ssh_port, $nfs_port and $mountd_port" >&2
+        exit 1
       fi
-      # Exported read-only and written before QEMU starts: the guest reads this
-      # to learn where each tag goes, and has no business changing it.
-      # hostUid and hostGid are what a remapped share shifts away from. They
-      # belong here rather than in the guest because they are a property of
-      # whoever started QEMU: the 9p server acts as that user, so that is the
-      # ownership every exported file is reported under.
-      #
-      # 10.0.2.2 is where QEMU's user-mode network presents this host to the
-      # guest (the default net=10.0.2.0/24); the port is only reachable there
-      # and on this Mac's own loopback.
-      printf '%s\n' "''${accepted[@]}" | jq -R -s \
-        --argjson hostUid "$(id -u)" \
-        --argjson hostGid "$(id -g)" \
-        --argjson bridgePort "$bridge_port" '
+      # As for SSH: QEMU would report a taken port as an unbuildable
+      # forwarding rule, long after it has taken over the terminal.
+      for port in "$nfs_port" "$mountd_port"; do
+        if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
+          echo "host port $port is already in use, so the guest's NFS cannot be forwarded" >&2
+          echo "free it, or set MBP_APPLE_VM_NFS_PORT and MBP_APPLE_VM_MOUNTD_PORT to other ports" >&2
+          exit 1
+        fi
+      done
+      netdev="$netdev,hostfwd=tcp:127.0.0.1:$nfs_port-:2049,hostfwd=tcp:127.0.0.1:$mountd_port-:$guest_mountd_port"
+
+      # Exported read-only and written before QEMU starts: the guest reads
+      # this to learn what to export, and has no business changing it. host is
+      # only there for the guest to name in its log.
+      printf '%s\n' "''${shares[@]}" | jq -R -s '
         {
-          version: 1,
-          hostUid: $hostUid,
-          hostGid: $hostGid,
+          version: 2,
           shares: (
             split("\n")
-            | map(select(length > 0))
-            | map(split("\t"))
-            | map({
-                tag: .[0],
-                host: .[1],
-                guest: .[2],
-                mode: .[3],
-                cache: .[4],
-                msize: (.[5] | tonumber),
-                remap: (.[6] == "true"),
-                transport: .[7],
-              })
+            | map(select(length > 0) | split("\t") | { host: .[0], guest: .[1], mode: .[2] })
           ),
-          watchman: (if $bridgePort > 0 then { host: "10.0.2.2", port: $bridgePort } else null end),
         }' >"$manifest_dir/manifest.json"
       qemu_args+=(
-        -fsdev "local,id=fsmanifest,path=$manifest_dir,security_model=none,multidevs=remap,readonly=on"
+        -fsdev "local,id=fsmanifest,path=$manifest_dir,security_model=none,readonly=on"
         -device "virtio-9p-pci,id=fsdevmanifest,fsdev=fsmanifest,mount_tag=$manifest_tag"
       )
+
+      # Port and mountport name the forwards, so mount_nfs never asks a
+      # portmapper, which is not forwarded. retrycnt=0 makes each attempt a
+      # single connection with the quick 8s timeout, since the loop below is
+      # the retry; timeout covers an attempt that hangs regardless.
+      nfs_mount_options="vers=3,tcp,port=$nfs_port,mountport=$mountd_port,locallocks,soft,intr,deadtimeout=60,retrycnt=0,nobrowse"
+
+      # Runs in the background while QEMU does: waits for the guest to export
+      # each share, mounts it, and records it for unmount_shares.
+      mount_shares() {
+        local row dir guest mode options err="$state_dir/nfs-mount.err"
+        local -a pending=("''${shares[@]}") waiting=()
+        local deadline=$(( SECONDS + nfs_timeout ))
+        # QEMU writes its pidfile while it starts up, and removes it on the
+        # way out.
+        for _ in {1..600}; do
+          if vm_pid >/dev/null; then
+            break
+          fi
+          sleep 0.1
+        done
+        while (( ''${#pending[@]} > 0 )); do
+          vm_pid >/dev/null || return 0
+          waiting=()
+          for row in "''${pending[@]}"; do
+            IFS=$'\t' read -r dir guest mode <<<"$row"
+            options=$nfs_mount_options
+            if [[ "$mode" == ro ]]; then
+              options="$options,rdonly"
+            fi
+            if timeout 30 /sbin/mount_nfs -o "$options" "127.0.0.1:$guest" "$dir" 2>"$err"; then
+              printf '%s\n' "$dir" >>"$mounts_file"
+              echo "mounted the guest's $guest at $dir ($mode)"
+            else
+              waiting+=("$row")
+            fi
+          done
+          pending=(''${waiting[@]+"''${waiting[@]}"})
+          (( ''${#pending[@]} > 0 )) || break
+          if (( SECONDS >= deadline )); then
+            for row in "''${pending[@]}"; do
+              IFS=$'\t' read -r dir guest mode <<<"$row"
+              echo "the guest did not export $guest within ''${nfs_timeout}s; $dir stays unmounted" >&2
+            done
+            echo "the last attempt said: $(cat "$err")" >&2
+            echo "mount by hand with: mount_nfs -o $nfs_mount_options 127.0.0.1:GUEST_DIR HOST_DIR" >&2
+            return 0
+          fi
+          sleep 2
+        done
+      }
     fi
+
+    qemu_args+=(
+      -netdev "$netdev"
+      -device "virtio-net-pci,netdev=net0"
+    )
 
     case "$display" in
       spice)
@@ -1112,6 +1089,10 @@ writeShellApplication {
         status=$?
       fi
     else
+      if (( ''${#shares[@]} > 0 )); then
+        mount_shares &
+        mounter_pid=$!
+      fi
       # QEMU in the background, with stdin explicitly passed through: bash runs
       # traps while it sits in wait, so a Ctrl-C or a closing terminal tears the
       # guest down instead of orphaning it, and cleanup has a pid to aim at. A

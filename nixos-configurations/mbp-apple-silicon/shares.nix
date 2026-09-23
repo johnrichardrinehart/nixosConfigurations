@@ -7,50 +7,48 @@
 let
   primaryUser = config.dev.johnrinehart.users.primary;
 
-  # The uid the host's 9p server acts as, which is whoever starts the
-  # launcher: `id -u` on that Mac is the authority, and 501 is only the number
-  # macOS happens to give its first account. This is the one place it is
-  # written down. Change it here and renumber the guest account to match; the
-  # mount service checks the two against what the launcher actually reports and
-  # says so when they have drifted apart.
+  # The Mac's uid: `id -u` on the Mac that runs the launcher is the authority,
+  # and 501 is only the number macOS gives its first account. NFSv3 hands the
+  # Mac every file's numeric owner unchanged, so with the guest's account on
+  # the same number the Mac's user sees its own files as its own - in Finder,
+  # in `ls -l`, and in the permission checks its NFS client makes before
+  # asking the guest. Writes arrive squashed to the guest account whatever
+  # uid the Mac sends (all_squash, in vm-export-shares).
   hostUid = 501;
 
-  # The launcher's manifest_tag. These two strings are the whole protocol: the
-  # guest finds one 9p device by a name fixed at build time, and everything
-  # else about every other share - where it goes, how it is cached, whether it
-  # is remapped - is read out of the manifest.json inside it. A mount tag caps
-  # at 31 bytes (MAX_TAG_LEN in QEMU's hw/9pfs/9p.h) and so cannot carry a
-  # path, which is why there is a manifest at all.
+  # The launcher's manifest_tag. The guest finds one 9p device by a name fixed
+  # at build time and reads which of its own directories to export out of the
+  # manifest.json inside it. The table lives on the Mac so the set of shares
+  # changes without rebuilding either side.
   manifestTag = "vm-shares";
   manifestMount = "/run/vm-shares";
 
-  # Raw 9p mounts for shares that bindfs then shifts. Kept outside
-  # manifestMount because that is itself a read-only 9p mount and nothing can
-  # be created inside it.
-  lowerRoot = "/run/vm-shares-lower";
+  # exportfs reads /etc/exports.d/*.exports beside /etc/exports, and that
+  # directory points here: the exports come from the launcher's table at boot
+  # rather than from this configuration, and nfs-server's own `exportfs -r`
+  # on a restart finds them again instead of dropping them.
+  exportsDir = "/run/vm-shares-exports";
 
-  mountShares = pkgs.writeShellApplication {
-    name = "vm-mount-shares";
+  # Where QEMU's user-mode network presents the Mac. The launcher forwards two
+  # loopback ports on the Mac to nfsd and mountd in here, and slirp opens the
+  # guest end of each forwarded connection from this address, from whatever
+  # unreserved port the Mac's side used - hence `insecure`.
+  hostAddress = "10.0.2.2";
+
+  # Pinned because the launcher forwards it by number: guest_mountd_port in
+  # packages/mbp-apple-silicon-qemu-vm.nix. The two must agree. nfsd itself is
+  # on 2049, which needs no pinning.
+  mountdPort = 20048;
+
+  exportShares = pkgs.writeShellApplication {
+    name = "vm-export-shares";
     runtimeInputs = [
-      pkgs.bindfs
       pkgs.coreutils
       pkgs.jq
-      pkgs.kmod
       pkgs.nfs-utils
       pkgs.util-linux
     ];
     text = ''
-      # A glob rather than ls, so a name with a newline in it cannot be read as
-      # two entries and an empty directory cannot be read as one.
-      dir_is_empty() {
-        local dir=$1
-        local -a entries=()
-        shopt -s nullglob dotglob
-        entries=("$dir"/*)
-        shopt -u nullglob dotglob
-        (( ''${#entries[@]} == 0 ))
-      }
-
       manifest="${manifestMount}/manifest.json"
 
       if ! mountpoint -q "${manifestMount}"; then
@@ -59,7 +57,7 @@ let
         # with an empty mapping table looks like.
         if ! mount -t 9p -o trans=virtio,version=9p2000.L,cache=none,msize=512000,ro \
           ${manifestTag} "${manifestMount}" 2>/dev/null; then
-          echo "no ${manifestTag} 9p device; this boot exports no host directories"
+          echo "no ${manifestTag} 9p device; this boot exports nothing to the host"
           exit 0
         fi
       fi
@@ -69,464 +67,137 @@ let
         exit 0
       fi
 
-      host_uid=$(jq -r '.hostUid' "$manifest")
-      host_gid=$(jq -r '.hostGid' "$manifest")
-      guest_uid=$(id -u ${primaryUser})
-      guest_gid=$(id -g ${primaryUser})
+      # Version 1 was the other direction: the guest mounting the Mac's
+      # directories. Exporting what an old launcher meant as mount points would
+      # hand the Mac empty directories, so refuse and say which side is stale.
+      version=$(jq -r '.version' "$manifest")
+      if [[ "$version" != 2 ]]; then
+        echo "the launcher wrote a version $version manifest; this guest exports its" >&2
+        echo "own directories and needs version 2. Update the launcher on the Mac." >&2
+        exit 1
+      fi
+
+      # all_squash with the guest account as the anonymous identity: whoever
+      # the Mac says it is, the guest acts as its own user, so nothing written
+      # from the Mac ends up owned by a uid or gid the guest does not have (the
+      # Mac sends its staff gid, 20). sync because a write the Mac was told is
+      # done should survive the guest going down; the Mac writes rarely, so it
+      # costs little.
+      uid=$(id -u ${primaryUser})
+      gid=$(id -g ${primaryUser})
+      options="insecure,no_subtree_check,sync,all_squash,anonuid=$uid,anongid=$gid"
+
+      mkdir -p "${exportsDir}"
+      staged=$(mktemp -p "${exportsDir}" .vm-shares.XXXXXX)
+      trap 'rm -f "$staged"' EXIT
 
       failed=0
       # A unit separator rather than a tab, which bash counts as IFS
       # whitespace and would collapse runs of.
-      while IFS=$'\x1f' read -r tag host guest mode cache msize remap transport; do
-        [[ -n "$tag" ]] || continue
+      while IFS=$'\x1f' read -r host guest mode; do
+        [[ -n "$guest" ]] || continue
 
-        # The launcher rejects anything that is not absolute before it writes
-        # the manifest, so reaching this means the two halves disagree about
-        # what a mapping is. Refuse rather than mount something under the
-        # working directory of a boot-time service.
-        if [[ "$host" != /* || "$guest" != /* ]]; then
-          echo "$tag maps $host to $guest, which are not both absolute; skipping" >&2
+        # The launcher checks all of these before it writes the manifest, so
+        # reaching one means the two halves disagree about what a mapping is.
+        if [[ "$guest" != /* ]]; then
+          echo "$guest is not absolute; not exporting it" >&2
           failed=1
           continue
         fi
-
-        if mountpoint -q "$guest"; then
-          continue
-        fi
-
-        # Mounting over a directory that already has something in it neither
-        # merges nor replaces it: the old contents stay on the guest's own
-        # disk, unreachable and invisible to du until the mount goes away.
-        # Doing that silently to somewhere inside a home directory is how a
-        # share gets mistaken for data loss - and how an rm -rf aimed at the
-        # stale copy travels through the mount and empties the Mac instead.
-        # The directory this service creates itself is empty, so this only
-        # ever catches something that was already there.
-        if [[ -d "$guest" ]] && ! dir_is_empty "$guest"; then
-          echo "$guest is not empty; refusing to hide what is in it behind $host." >&2
-          echo "Move it aside or remove it, then: systemctl restart vm-shares" >&2
+        # exports(5) separates fields with whitespace.
+        if [[ "$guest" =~ [[:space:]] ]]; then
+          echo "$guest contains whitespace, which exports(5) cannot carry; not exporting it" >&2
           failed=1
           continue
         fi
-
-        if [[ "$transport" == nfs ]]; then
-          # The launcher only says nfs when this Mac exports $host to
-          # localhost, which is where the user-mode network's 10.0.2.2 lands.
-          # actimeo=1: attributes and lookups - negative ones included
-          # (lookupcache=all) - are trusted for at most a second, on top of
-          # close-to-open. Exclusive create is decided by the server, so lock
-          # files still exclude across the boundary; byte-range locks do not,
-          # as with 9p (nolock). hard: a Mac that stops answering stalls I/O
-          # rather than failing it.
-          opts="vers=3,proto=tcp,mountproto=tcp,hard,nolock,actimeo=1,lookupcache=all,rsize=1048576,wsize=1048576"
-          if [[ "$mode" == ro ]]; then
-            opts="$opts,ro"
-          fi
-          if [[ ! -d "$guest" ]]; then
-            mkdir -p "$guest"
-            chown "${primaryUser}" "$guest" || true
-          fi
-          modprobe nfs
-          if mount.nfs "10.0.2.2:$host" "$guest" -o "$opts"; then
-            echo "mounted $host at $guest ($mode, nfs)"
-          else
-            echo "could not mount 10.0.2.2:$host at $guest over nfs" >&2
-            failed=1
-          fi
-          continue
-        fi
-
-        opts="trans=virtio,version=9p2000.L,cache=$cache,msize=$msize"
-        if [[ "$mode" == ro ]]; then
-          opts="$opts,ro"
-        fi
-
-        # Without a remap the 9p mount is the share, and lands directly on the
-        # guest path. With one it is only the lower half, and bindfs is what
-        # the guest actually sees.
-        if [[ "$remap" == true ]]; then
-          target="${lowerRoot}/$tag"
-        else
-          target="$guest"
-        fi
-
-        # Both ends up front: the guest path always has to exist, and a
-        # remapped share also needs somewhere to put the raw 9p mount that
-        # bindfs reads through. Without a remap these are the same directory
-        # and the second pass does nothing.
-        for dir in "$guest" "$target"; do
-          if [[ ! -d "$dir" ]]; then
-            mkdir -p "$dir"
-            # Whoever has to look at this if a mount below fails.
-            chown "${primaryUser}" "$dir" || true
-          fi
-        done
-
-        # A run that failed part way through can leave the lower half mounted
-        # under a guest path that never got its bindfs, and mounting 9p over
-        # it again would just stack another one on top.
-        if ! mountpoint -q "$target"; then
-          if ! mount -t 9p -o "$opts" "$tag" "$target"; then
-            echo "could not mount $tag at $target" >&2
+        case "$mode" in
+          ro | rw) ;;
+          *)
+            echo "$guest: mode must be ro or rw, not $mode; not exporting it" >&2
             failed=1
             continue
-          fi
+            ;;
+        esac
+
+        if [[ ! -d "$guest" ]]; then
+          mkdir -p "$guest"
+          chown "${primaryUser}:" "$guest"
         fi
 
-        if [[ "$remap" != true ]]; then
-          # Without a remap the share carries the host's ownership unchanged,
-          # so the account only gets to write it when it answers to the same
-          # number. Nothing here can fix that at mount time - the uid is fixed
-          # at build time and the account has to be renumbered by hand - but a
-          # share that is quietly read-only is worth naming out loud.
-          if [[ "$host_uid" != "$guest_uid" ]]; then
-            echo "warning: $host is exported by uid $host_uid but ${primaryUser} is $guest_uid," >&2
-            echo "         so $guest is effectively read-only. Either set" >&2
-            echo "         dev.johnrinehart.users.forceUid.uid to $host_uid and renumber the" >&2
-            echo "         account, or give this mapping \"remap\": true." >&2
-          fi
-          echo "mounted $host at $guest ($mode, cache=$cache)"
-          continue
-        fi
+        # The point of the direction is that the data sits on this guest's own
+        # disk. Exporting a network mount would re-export someone else's
+        # filesystem, with both their latency and ours.
+        fstype=$(findmnt -n -o FSTYPE --target "$guest")
+        case "$fstype" in
+          9p | nfs | nfs4 | virtiofs | cifs | smb3 | fuse.*)
+            echo "$guest is on $fstype, not on this guest's disk; not exporting it" >&2
+            failed=1
+            continue
+            ;;
+        esac
 
-        # Nothing on this host needs this any more - its account carries the
-        # same uid as the Mac's, so the shares arrive already owned correctly -
-        # but it stays for the case where the two cannot be reconciled: a host
-        # uid already taken in the guest, an account that cannot be renumbered,
-        # or a share exported by someone other than the guest's own user.
-        #
-        # It is a last resort rather than a default, and the reason is
-        # measured. Every FUSE lookup is forwarded to userspace and re-stat'ed
-        # against the mount below instead of being served from the guest's
-        # dentry cache, which works out at about two 9p round trips per path
-        # component on every operation. On this guest that was 23ms against
-        # 4ms for the same six-component path taken directly, and git status
-        # on a small repository went from 3.1s to 0.34s when it came out.
-        #
-        # attr_timeout and friends default to a second in libfuse, which would
-        # put a cache back on top of the very mount that asked for cache=none
-        # to be rid of one: a lock file created on the host could sit invisible
-        # in here for as long as the entry is held. Zero them all.
-        if bindfs \
-          --map="$host_uid/$guest_uid:@$host_gid/@$guest_gid" \
-          -o allow_other,attr_timeout=0,entry_timeout=0,negative_timeout=0 \
-          "$target" "$guest"; then
-          echo "mounted $host at $guest ($mode, cache=$cache, $host_uid:$host_gid -> $guest_uid:$guest_gid)"
-        else
-          echo "could not lay bindfs over $target at $guest" >&2
-          umount "$target" || true
-          failed=1
-        fi
+        printf '%s %s(%s,%s)\n' "$guest" "${hostAddress}" "$mode" "$options" >>"$staged"
+        echo "exporting $guest to the host as $host ($mode)"
       done < <(jq -r '
         .shares[]
-        | [.tag, .host, .guest, .mode, .cache, (.msize | tostring), (.remap | tostring), (.transport // "9p")]
+        | [.host, .guest, .mode]
         | join("\u001f")
       ' "$manifest")
+
+      chmod 0644 "$staged"
+      mv "$staged" "${exportsDir}/vm-shares.exports"
+      exportfs -ra
 
       exit "$failed"
     '';
   };
-
-  # Gives a dependency directory inside a share a guest-local directory of the
-  # same name, bind-mounted over it: /var/lib/vm-local-dirs/<uid>/<key>. Runs
-  # as root through sudo (see security.sudo.extraRules below) for the user
-  # named by SUDO_UID, who owns everything on the shares and so could swap any
-  # path component for a symlink at any moment. Hence: the name is from an
-  # allowlist, the path must already be canonical and inside a mounted share,
-  # the mount point is created as the user, and the mount goes onto the
-  # directory actually opened and checked (through /proc/self/fd, with
-  # canonicalisation off) rather than onto a name resolved again later.
-  localDir = pkgs.writeShellApplication {
-    name = "vm-local-dir";
-    runtimeInputs = [
-      pkgs.coreutils
-      pkgs.jq
-      pkgs.util-linux
-    ];
-    text = ''
-      die() {
-        echo "vm-local-dir: $*" >&2
-        exit 1
-      }
-
-      [[ $# -eq 1 ]] || die "usage: vm-local-dir /share/.../project/{node_modules,.venv}"
-      uid=''${SUDO_UID:-}
-      gid=''${SUDO_GID:-}
-      [[ $uid =~ ^[1-9][0-9]*$ && $gid =~ ^[0-9]+$ ]] || die "run through sudo, not as root"
-
-      path=$1
-      name=''${path##*/}
-      parent=''${path%/*}
-      case "$name" in
-        node_modules | .venv) ;;
-        *) die "$name is not a directory this helper relocates" ;;
-      esac
-      [[ $path == /* ]] || die "$path is not absolute"
-      # Refused rather than resolved: .., //, or a symlink anywhere along it.
-      [[ $(realpath -e -- "$parent") == "$parent" ]] || die "$parent is not a canonical existing path"
-
-      inside=""
-      while IFS= read -r root; do
-        root=''${root%/}
-        [[ -n $root ]] || continue
-        if [[ $parent == "$root" || $parent == "$root"/* ]] && mountpoint -q -- "$root"; then
-          inside=$root
-        fi
-      done < <(jq -r '.shares[].guest' ${manifestMount}/manifest.json 2>/dev/null)
-      [[ -n $inside ]] || die "$parent is not inside a mounted share"
-
-      if mountpoint -q -- "$path"; then
-        exit 0
-      fi
-      if [[ ! -e $path && ! -L $path ]]; then
-        setpriv --reuid="$uid" --regid="$gid" --clear-groups mkdir -- "$path"
-      fi
-      [[ -d $path && ! -L $path ]] || die "$path is not a directory"
-
-      store=/var/lib/vm-local-dirs
-      install -d -m 0755 -o root -g root "$store" "$store/$uid"
-      key=$(printf '%s' "$path" | sha1sum | cut -c1-40)
-      backing=$store/$uid/$key-$name
-      [[ -d $backing ]] || install -d -m 0755 -o "$uid" -g "$gid" "$backing"
-
-      exec {fd}<"$path"
-      [[ $(readlink "/proc/self/fd/$fd") == "$path" ]] || die "$path changed while it was being checked"
-      # The classic mount(2) follows the /proc magic link to the opened
-      # directory; libmount's fd-based path (open_tree/move_mount) rejects it
-      # with EINVAL.
-      LIBMOUNT_FORCE_MOUNT2=always mount --no-canonicalize --bind "$backing" "/proc/self/fd/$fd"
-    '';
-  };
-
-  # macOS's nfsd never closes its end of a TCP connection the client has
-  # half-closed: the socket sits in CLOSE_WAIT until nfsd restarts. Linux's
-  # NFS client closes a connection that has been idle for five minutes, and
-  # then will not open a new one until the old one has finished closing - so
-  # the first access after any idle spell hangs, for good on a hard mount.
-  # Observed here: FIN-WAIT-2 on the guest, CLOSE_WAIT on the Mac, no NFS
-  # traffic at all, and recovery the moment the guest's socket was killed.
-  #
-  # So every minute, for each NFS share: kill a connection to the Mac's nfsd
-  # left in FIN-WAIT-2 (it can only be one of these; the client reconnects on
-  # the next request), then ask the server for the filesystem's statistics.
-  # statfs is always sent to the server, so the connection is never idle
-  # long enough to be closed in the first place.
-  nfsKeepalive = pkgs.writeShellApplication {
-    name = "vm-nfs-keepalive";
-    runtimeInputs = [
-      pkgs.coreutils
-      pkgs.gawk
-      pkgs.iproute2
-      pkgs.util-linux
-    ];
-    text = ''
-      if [[ -n $(ss -Htn state fin-wait-2 dst 10.0.2.2 dport = 2049) ]]; then
-        echo "killing a half-closed connection to the host's nfsd"
-        ss -K state fin-wait-2 dst 10.0.2.2 dport = 2049 >/dev/null
-      fi
-      status=0
-      while IFS= read -r target; do
-        # A mount that still does not answer must not pile up keepalives
-        # behind it: each is killed if the server is gone, and the next
-        # minute tries again.
-        if ! timeout -s KILL 20 stat -f -- "$target" >/dev/null; then
-          echo "$target did not answer statfs within 20s" >&2
-          status=1
-        fi
-      done < <(findmnt -rn -t nfs -o TARGET,SOURCE | awk '$2 ~ /^10\.0\.2\.2:/ {print $1}')
-      exit "$status"
-    '';
-  };
 in
 {
-  # 9p autoloads through its module alias when the first mount asks for the
-  # virtio transport, but the manifest mount is the earliest thing in the boot
-  # that does and there is nothing to be gained from discovering a missing
-  # module then.
+  # Only the manifest still arrives over 9p. It autoloads through its module
+  # alias when the first mount asks for the virtio transport, but that is the
+  # earliest thing in the boot that does and nothing is gained from finding a
+  # missing module then.
   boot.kernelModules = [
     "9p"
     "9pnet_virtio"
   ];
 
-  # bindfs runs as root and hands the mount to the primary user, which is
-  # exactly the case allow_other exists for.
-  programs.fuse.userAllowOther = true;
-
-  # This Mac's uid, so a share arrives already owned by the account that uses
-  # it and no bindfs is needed to shift it. Measured on this guest: a stat
-  # through bindfs costs about 4ms per path component against 0.7ms on the 9p
-  # mount underneath it, because every FUSE lookup is forwarded to userspace
-  # and re-stat'ed rather than served from the guest's dentry cache.
-  #
-  # Set "remap": false in the mapping table once `id -u` in here agrees with
-  # this. It cannot be flipped in advance: NixOS leaves an existing account's
-  # uid alone, so until the usermod is done the guest still holds its old
-  # number and the bindfs layer is the only thing making the share writable.
+  # See hostUid. NixOS leaves an existing account's uid alone; forced-uid.nix
+  # says what to run when the account predates this.
   dev.johnrinehart.users.forceUid = {
     username = primaryUser;
     uid = hostUid;
   };
 
-  # cache=none keeps no dentries: every lookup of a path component not pinned
-  # by the cwd or an open file is a TWALK and a TGETATTR, about 1.4ms on this
-  # guest, and a readdir costs the host one lstat per entry. `git status` on a
-  # 1500-file worktree under the share came to 7s of that, and the prompt runs
-  # one per command. Git's fsmonitor hook takes the stats out of it: the hook
-  # asks a watchman on the Mac what changed since the last token - it sees the
-  # host's writes and the guest's alike, since the 9p server makes the guest's
-  # as ordinary host syscalls - and git stats only those. Measured at 0.3s
-  # against 7.4s on the same worktree. The launcher runs the watchman and the
-  # bridge to it and names the bridge in the manifest; without them the hook
-  # fails and git scans as before, slower but never wrong.
-  dev.johnrinehart.programs.git.hostFsmonitor.enable = true;
+  services.nfs.server = {
+    enable = true;
+    inherit mountdPort;
+  };
 
-  # Per-machine state out of trees on the shares, for direnv users in this
-  # guest. A share is the Mac's worktree too: whatever a build or an install
-  # writes into it lands on 9p (a round trip per operation), is seen by the
-  # Mac, and is usually for the wrong OS there - aarch64-linux artifacts,
-  # native node modules - so the two sides overwrite each other.
-  #
-  # - direnv's layout directory (nix-direnv's cached environment, profile and
-  #   gc roots; `.direnv` beside the `.envrc` by default) moves to this guest's
-  #   cache, keyed by directory. nix-direnv names its profile after the `use
-  #   flake` arguments alone, so in-tree the two sides would swap profiles.
-  # - CARGO_TARGET_DIR defaults to ~/.cache/cargo-target/<worktree key> when
-  #   neither the environment, the project's devShell nor the `.envrc` before
-  #   `use flake` chose one: one root, a directory per `.envrc`.
-  # - Dependency directories that tools insist on keeping in the tree
-  #   (node_modules beside each tracked package.json, .venv beside each
-  #   tracked pyproject.toml) get a guest-local directory bind-mounted over
-  #   them by vm-local-dir, before the devShell's hooks can write there. The
-  #   guest sees its own copy at the usual path; the Mac sees an empty
-  #   directory under the mount point and keeps its own.
-  #
-  # The last two hook `use flake` and `use nix`, where the working directory
-  # is the `.envrc`'s: direnvrc itself is sourced from wherever direnv was
-  # invoked. All of it applies only when the session says it is in a VM guest
-  # (VM_GUEST=1, set by the overlay that runs this configuration as
-  # one) and only to trees on a network filesystem. The type comes from the
-  # mount table: statfs on 9p reports the host filesystem's magic (APFS).
-  home-manager.users.${primaryUser}.programs.direnv.stdlib = ''
-    if [[ "''${VM_GUEST:-}" == 1 ]]; then
-      _vm_on_share() {
-        case "$(${pkgs.util-linux}/bin/findmnt -n -o FSTYPE --target "$1" 2>/dev/null)" in
-          9p | nfs | nfs4 | virtiofs | cifs | smb3 | fuse.*) return 0 ;;
-        esac
-        return 1
-      }
+  environment.etc."exports.d".source = exportsDir;
+  systemd.tmpfiles.rules = [ "d ${exportsDir} 0755 root root -" ];
 
-      # A name for a directory that is unique (the hash) and readable (the path).
-      _vm_dir_key() {
-        local hash
-        hash=$(printf '%s' "$1" | ${pkgs.coreutils}/bin/sha1sum | ${pkgs.coreutils}/bin/cut -c1-40)
-        echo "$hash''${1//[^a-zA-Z0-9]/-}"
-      }
-
-      direnv_layout_dir() {
-        if [[ -n "''${direnv_layout_dir:-}" ]]; then
-          echo "$direnv_layout_dir"
-        elif _vm_on_share "$PWD"; then
-          echo "''${XDG_CACHE_HOME:-$HOME/.cache}/direnv/layouts/$(_vm_dir_key "$PWD")"
-        else
-          echo "$PWD/.direnv"
-        fi
-      }
-
-      _vm_before_env() {
-        _vm_on_share "$PWD" || return 0
-        local manifest dir name path
-        # The index names every tracked manifest without walking the tree.
-        while IFS= read -r -d "" manifest; do
-          case "''${manifest##*/}" in
-            package.json) name=node_modules ;;
-            pyproject.toml) name=.venv ;;
-            *) continue ;;
-          esac
-          dir=$PWD/''${manifest%/*}
-          [[ $manifest == */* ]] || dir=$PWD
-          path=$dir/$name
-          ${pkgs.util-linux}/bin/mountpoint -q -- "$path" 2>/dev/null && continue
-          /run/wrappers/bin/sudo -n ${localDir}/bin/vm-local-dir "$path" ||
-            log_error "could not give $path a guest-local directory; it stays on the share"
-        done < <(git -C "$PWD" ls-files -z -- ':(glob)**/package.json' ':(glob)**/pyproject.toml' 2>/dev/null)
-      }
-
-      _vm_after_env() {
-        _vm_on_share "$PWD" || return 0
-        if [[ -z "''${CARGO_TARGET_DIR:-}" ]]; then
-          export CARGO_TARGET_DIR="''${XDG_CACHE_HOME:-$HOME/.cache}/cargo-target/$(_vm_dir_key "$PWD")"
-        fi
-      }
-
-      # Wraps nix-direnv's entry points, which its library (loaded before this
-      # file) has already defined. An .envrc that source_url's its own
-      # nix-direnv replaces them unwrapped, but only when the installed one is
-      # older than it asks for.
-      _vm_wrap() {
-        declare -F "$1" >/dev/null || return 0
-        eval "_vm_orig_$1() $(declare -f "$1" | ${pkgs.coreutils}/bin/tail -n +2)"
-        eval "$1() { _vm_before_env; _vm_orig_$1 \"\$@\"; local status=\$?; _vm_after_env; return \$status; }"
-      }
-      _vm_wrap use_flake
-      _vm_wrap use_nix
-    fi
-  '';
-
-  # Only the primary user, only this helper, and the helper refuses anything
-  # but an allowlisted directory name inside a mounted share.
-  security.sudo.extraRules = [
-    {
-      users = [ primaryUser ];
-      commands = [
-        {
-          command = "${localDir}/bin/vm-local-dir";
-          options = [ "NOPASSWD" ];
-        }
-      ];
-    }
+  # With user-mode networking nothing but the Mac reaches this guest, and the
+  # Mac only through the launcher's forwards on its own loopback. The exports
+  # themselves accept no client but ${hostAddress}.
+  networking.firewall.allowedTCPPorts = [
+    2049
+    mountdPort
   ];
 
   systemd.services.vm-shares = {
-    description = "Mount the host directories exported to this guest over 9p or NFS";
+    description = "Export the guest directories the host mounts over NFS";
     wantedBy = [ "multi-user.target" ];
-    # NFS shares need the user-mode network up to reach 10.0.2.2; 9p ones
-    # don't, but one service mounts both.
-    wants = [ "network-online.target" ];
+    wants = [ "nfs-server.service" ];
     after = [
       "local-fs.target"
-      "network-online.target"
+      "nfs-server.service"
     ];
-    # The session should find its shares already in place rather than racing
-    # them. Ordering against a unit that does not exist is a no-op, so this
-    # costs nothing on a guest booted without a display.
-    before = [ "greetd.service" ];
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
-      ExecStart = lib.getExe mountShares;
-      # A 9p mount against a host that has stopped answering would otherwise
-      # hold the boot open indefinitely.
+      ExecStart = lib.getExe exportShares;
       TimeoutStartSec = "60s";
-    };
-  };
-
-  # See nfsKeepalive. Every minute keeps the connection well inside the NFS
-  # client's five-minute idle close, even with timer slack; a guest resumed
-  # from suspend gets its first run within the minute.
-  systemd.services.vm-nfs-keepalive = {
-    description = "Keep NFS connections to the host alive and unstick half-closed ones";
-    after = [ "vm-shares.service" ];
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = lib.getExe nfsKeepalive;
-    };
-  };
-  systemd.timers.vm-nfs-keepalive = {
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnBootSec = "1min";
-      OnUnitActiveSec = "1min";
-      AccuracySec = "5s";
     };
   };
 }

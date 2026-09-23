@@ -42,12 +42,9 @@ in
       Pin an account to a particular uid, including one below the normal range.
 
       This exists for filesystems that carry ownership across a boundary
-      without translating it. A virtio-9p export under security_model=none
-      reports the host's uid unchanged, so a guest account writes to the share
-      only when it answers to the same number. The alternative - laying bindfs
-      over the mount to shift ownership - costs a FUSE round trip per path
-      component on every operation, measured at roughly five times the
-      underlying 9p cost.
+      without translating it. An NFSv3 export hands its client every file's
+      numeric owner unchanged, so the client's user sees the files as its own
+      only when the account behind them answers to the same number.
 
       Below 1000 this cannot simply set the uid: nixpkgs asserts that a normal
       user has a uid of at least 1000, so the account has to be declared a
@@ -96,8 +93,8 @@ in
         # update-users-groups.pl refuses to change an existing account's uid -
         # it prints "warning: not applying UID change" and moves on - so a
         # system that predates this option keeps the uid it was allocated and
-        # the share silently stays unwritable. Say so where it will be seen,
-        # with the commands that fix it.
+        # whatever relies on the number silently disagrees. Say so where it
+        # will be seen, with the commands that fix it.
         system.activationScripts.forceUid = {
           deps = [ "users" ];
           text = ''
