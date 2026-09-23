@@ -197,6 +197,77 @@ let
       exit "$failed"
     '';
   };
+
+  # Gives a dependency directory inside a share a guest-local directory of the
+  # same name, bind-mounted over it: /var/lib/vm-local-dirs/<uid>/<key>. Runs
+  # as root through sudo (see security.sudo.extraRules below) for the user
+  # named by SUDO_UID, who owns everything on the shares and so could swap any
+  # path component for a symlink at any moment. Hence: the name is from an
+  # allowlist, the path must already be canonical and inside a mounted share,
+  # the mount point is created as the user, and the mount goes onto the
+  # directory actually opened and checked (through /proc/self/fd, with
+  # canonicalisation off) rather than onto a name resolved again later.
+  localDir = pkgs.writeShellApplication {
+    name = "vm-local-dir";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.jq
+      pkgs.util-linux
+    ];
+    text = ''
+      die() {
+        echo "vm-local-dir: $*" >&2
+        exit 1
+      }
+
+      [[ $# -eq 1 ]] || die "usage: vm-local-dir /share/.../project/{node_modules,.venv}"
+      uid=''${SUDO_UID:-}
+      gid=''${SUDO_GID:-}
+      [[ $uid =~ ^[1-9][0-9]*$ && $gid =~ ^[0-9]+$ ]] || die "run through sudo, not as root"
+
+      path=$1
+      name=''${path##*/}
+      parent=''${path%/*}
+      case "$name" in
+        node_modules | .venv) ;;
+        *) die "$name is not a directory this helper relocates" ;;
+      esac
+      [[ $path == /* ]] || die "$path is not absolute"
+      # Refused rather than resolved: .., //, or a symlink anywhere along it.
+      [[ $(realpath -e -- "$parent") == "$parent" ]] || die "$parent is not a canonical existing path"
+
+      inside=""
+      while IFS= read -r root; do
+        root=''${root%/}
+        [[ -n $root ]] || continue
+        if [[ $parent == "$root" || $parent == "$root"/* ]] && mountpoint -q -- "$root"; then
+          inside=$root
+        fi
+      done < <(jq -r '.shares[].guest' ${manifestMount}/manifest.json 2>/dev/null)
+      [[ -n $inside ]] || die "$parent is not inside a mounted share"
+
+      if mountpoint -q -- "$path"; then
+        exit 0
+      fi
+      if [[ ! -e $path && ! -L $path ]]; then
+        setpriv --reuid="$uid" --regid="$gid" --clear-groups mkdir -- "$path"
+      fi
+      [[ -d $path && ! -L $path ]] || die "$path is not a directory"
+
+      store=/var/lib/vm-local-dirs
+      install -d -m 0755 -o root -g root "$store" "$store/$uid"
+      key=$(printf '%s' "$path" | sha1sum | cut -c1-40)
+      backing=$store/$uid/$key-$name
+      [[ -d $backing ]] || install -d -m 0755 -o "$uid" -g "$gid" "$backing"
+
+      exec {fd}<"$path"
+      [[ $(readlink "/proc/self/fd/$fd") == "$path" ]] || die "$path changed while it was being checked"
+      # The classic mount(2) follows the /proc magic link to the opened
+      # directory; libmount's fd-based path (open_tree/move_mount) rejects it
+      # with EINVAL.
+      LIBMOUNT_FORCE_MOUNT2=always mount --no-canonicalize --bind "$backing" "/proc/self/fd/$fd"
+    '';
+  };
 in
 {
   # 9p autoloads through its module alias when the first mount asks for the
@@ -239,6 +310,112 @@ in
   # bridge to it and names the bridge in the manifest; without them the hook
   # fails and git scans as before, slower but never wrong.
   dev.johnrinehart.programs.git.hostFsmonitor.enable = true;
+
+  # Per-machine state out of trees on the shares, for direnv users in this
+  # guest. A share is the Mac's worktree too: whatever a build or an install
+  # writes into it lands on 9p (a round trip per operation), is seen by the
+  # Mac, and is usually for the wrong OS there - aarch64-linux artifacts,
+  # native node modules - so the two sides overwrite each other.
+  #
+  # - direnv's layout directory (nix-direnv's cached environment, profile and
+  #   gc roots; `.direnv` beside the `.envrc` by default) moves to this guest's
+  #   cache, keyed by directory. nix-direnv names its profile after the `use
+  #   flake` arguments alone, so in-tree the two sides would swap profiles.
+  # - CARGO_TARGET_DIR defaults to ~/.cache/cargo-target/<worktree key> when
+  #   neither the environment, the project's devShell nor the `.envrc` before
+  #   `use flake` chose one: one root, a directory per `.envrc`.
+  # - Dependency directories that tools insist on keeping in the tree
+  #   (node_modules beside each tracked package.json, .venv beside each
+  #   tracked pyproject.toml) get a guest-local directory bind-mounted over
+  #   them by vm-local-dir, before the devShell's hooks can write there. The
+  #   guest sees its own copy at the usual path; the Mac sees an empty
+  #   directory under the mount point and keeps its own.
+  #
+  # The last two hook `use flake` and `use nix`, where the working directory
+  # is the `.envrc`'s: direnvrc itself is sourced from wherever direnv was
+  # invoked. All of it applies only when the session says it is in a VM guest
+  # (VM_GUEST=1, set by the overlay that runs this configuration as
+  # one) and only to trees on a network filesystem. The type comes from the
+  # mount table: statfs on 9p reports the host filesystem's magic (APFS).
+  home-manager.users.${primaryUser}.programs.direnv.stdlib = ''
+    if [[ "''${VM_GUEST:-}" == 1 ]]; then
+      _vm_on_share() {
+        case "$(${pkgs.util-linux}/bin/findmnt -n -o FSTYPE --target "$1" 2>/dev/null)" in
+          9p | nfs | nfs4 | virtiofs | cifs | smb3 | fuse.*) return 0 ;;
+        esac
+        return 1
+      }
+
+      # A name for a directory that is unique (the hash) and readable (the path).
+      _vm_dir_key() {
+        local hash
+        hash=$(printf '%s' "$1" | ${pkgs.coreutils}/bin/sha1sum | ${pkgs.coreutils}/bin/cut -c1-40)
+        echo "$hash''${1//[^a-zA-Z0-9]/-}"
+      }
+
+      direnv_layout_dir() {
+        if [[ -n "''${direnv_layout_dir:-}" ]]; then
+          echo "$direnv_layout_dir"
+        elif _vm_on_share "$PWD"; then
+          echo "''${XDG_CACHE_HOME:-$HOME/.cache}/direnv/layouts/$(_vm_dir_key "$PWD")"
+        else
+          echo "$PWD/.direnv"
+        fi
+      }
+
+      _vm_before_env() {
+        _vm_on_share "$PWD" || return 0
+        local manifest dir name path
+        # The index names every tracked manifest without walking the tree.
+        while IFS= read -r -d "" manifest; do
+          case "''${manifest##*/}" in
+            package.json) name=node_modules ;;
+            pyproject.toml) name=.venv ;;
+            *) continue ;;
+          esac
+          dir=$PWD/''${manifest%/*}
+          [[ $manifest == */* ]] || dir=$PWD
+          path=$dir/$name
+          ${pkgs.util-linux}/bin/mountpoint -q -- "$path" 2>/dev/null && continue
+          /run/wrappers/bin/sudo -n ${localDir}/bin/vm-local-dir "$path" ||
+            log_error "could not give $path a guest-local directory; it stays on the share"
+        done < <(git -C "$PWD" ls-files -z -- ':(glob)**/package.json' ':(glob)**/pyproject.toml' 2>/dev/null)
+      }
+
+      _vm_after_env() {
+        _vm_on_share "$PWD" || return 0
+        if [[ -z "''${CARGO_TARGET_DIR:-}" ]]; then
+          export CARGO_TARGET_DIR="''${XDG_CACHE_HOME:-$HOME/.cache}/cargo-target/$(_vm_dir_key "$PWD")"
+        fi
+      }
+
+      # Wraps nix-direnv's entry points, which its library (loaded before this
+      # file) has already defined. An .envrc that source_url's its own
+      # nix-direnv replaces them unwrapped, but only when the installed one is
+      # older than it asks for.
+      _vm_wrap() {
+        declare -F "$1" >/dev/null || return 0
+        eval "_vm_orig_$1() $(declare -f "$1" | ${pkgs.coreutils}/bin/tail -n +2)"
+        eval "$1() { _vm_before_env; _vm_orig_$1 \"\$@\"; local status=\$?; _vm_after_env; return \$status; }"
+      }
+      _vm_wrap use_flake
+      _vm_wrap use_nix
+    fi
+  '';
+
+  # Only the primary user, only this helper, and the helper refuses anything
+  # but an allowlisted directory name inside a mounted share.
+  security.sudo.extraRules = [
+    {
+      users = [ primaryUser ];
+      commands = [
+        {
+          command = "${localDir}/bin/vm-local-dir";
+          options = [ "NOPASSWD" ];
+        }
+      ];
+    }
+  ];
 
   systemd.services.vm-shares = {
     description = "Mount the host directories exported to this guest over 9p";
