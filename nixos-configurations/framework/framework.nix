@@ -45,7 +45,6 @@ in
       keep-outputs = true;
       min-free = 5 * 1024 * 1024 * 1024;
       max-free = 10 * 1024 * 1024 * 1024;
-      trusted-users = [ primaryUser ];
     };
   };
 
