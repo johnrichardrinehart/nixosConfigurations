@@ -297,6 +297,46 @@ let
       LIBMOUNT_FORCE_MOUNT2=always mount --no-canonicalize --bind "$backing" "/proc/self/fd/$fd"
     '';
   };
+
+  # macOS's nfsd never closes its end of a TCP connection the client has
+  # half-closed: the socket sits in CLOSE_WAIT until nfsd restarts. Linux's
+  # NFS client closes a connection that has been idle for five minutes, and
+  # then will not open a new one until the old one has finished closing - so
+  # the first access after any idle spell hangs, for good on a hard mount.
+  # Observed here: FIN-WAIT-2 on the guest, CLOSE_WAIT on the Mac, no NFS
+  # traffic at all, and recovery the moment the guest's socket was killed.
+  #
+  # So every minute, for each NFS share: kill a connection to the Mac's nfsd
+  # left in FIN-WAIT-2 (it can only be one of these; the client reconnects on
+  # the next request), then ask the server for the filesystem's statistics.
+  # statfs is always sent to the server, so the connection is never idle
+  # long enough to be closed in the first place.
+  nfsKeepalive = pkgs.writeShellApplication {
+    name = "vm-nfs-keepalive";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.gawk
+      pkgs.iproute2
+      pkgs.util-linux
+    ];
+    text = ''
+      if [[ -n $(ss -Htn state fin-wait-2 dst 10.0.2.2 dport = 2049) ]]; then
+        echo "killing a half-closed connection to the host's nfsd"
+        ss -K state fin-wait-2 dst 10.0.2.2 dport = 2049 >/dev/null
+      fi
+      status=0
+      while IFS= read -r target; do
+        # A mount that still does not answer must not pile up keepalives
+        # behind it: each is killed if the server is gone, and the next
+        # minute tries again.
+        if ! timeout -s KILL 20 stat -f -- "$target" >/dev/null; then
+          echo "$target did not answer statfs within 20s" >&2
+          status=1
+        fi
+      done < <(findmnt -rn -t nfs -o TARGET,SOURCE | awk '$2 ~ /^10\.0\.2\.2:/ {print $1}')
+      exit "$status"
+    '';
+  };
 in
 {
   # 9p autoloads through its module alias when the first mount asks for the
@@ -467,6 +507,26 @@ in
       # A 9p mount against a host that has stopped answering would otherwise
       # hold the boot open indefinitely.
       TimeoutStartSec = "60s";
+    };
+  };
+
+  # See nfsKeepalive. Every minute keeps the connection well inside the NFS
+  # client's five-minute idle close, even with timer slack; a guest resumed
+  # from suspend gets its first run within the minute.
+  systemd.services.vm-nfs-keepalive = {
+    description = "Keep NFS connections to the host alive and unstick half-closed ones";
+    after = [ "vm-shares.service" ];
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = lib.getExe nfsKeepalive;
+    };
+  };
+  systemd.timers.vm-nfs-keepalive = {
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnBootSec = "1min";
+      OnUnitActiveSec = "1min";
+      AccuracySec = "5s";
     };
   };
 }
