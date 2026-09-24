@@ -70,11 +70,12 @@ writeShellApplication {
     virtio-gpu can carry more than one scanout, so the guest sees --outputs
     separate displays and a SPICE client shows each of them in its own window.
 
-    --outputs defaults to auto: the guest is given one display per monitor
-    attached to this Mac when the VM starts, and the displays are sized after
-    the Mac's primary monitor. Mirrored monitors are counted once. Reconnect a
-    monitor later and the guest keeps the outputs it booted with, so restart
-    the VM to pick up the new one.
+    --outputs defaults to 1, which keeps the absolute pointer described below.
+    auto gives the guest one display per monitor attached to this Mac when the
+    VM starts. Either way the displays are sized after the Mac's primary
+    monitor. Mirrored monitors are counted once. Reconnect a monitor later and
+    the guest keeps the outputs it booted with, so restart the VM to pick up
+    the new one.
 
     A regular run boots the installed system through EDK2 and gives the
     terminal nothing of the guest: no console, just the launcher's own output.
@@ -184,7 +185,7 @@ writeShellApplication {
     stale status. Let git scan it.
 
     Environment:
-      MBP_APPLE_VM_OUTPUTS          virtio-gpu scanouts, or auto (default: auto)
+      MBP_APPLE_VM_OUTPUTS          virtio-gpu scanouts, or auto (default: 1)
       MBP_APPLE_VM_DISPLAY          spice, cocoa or none (default: spice)
       MBP_APPLE_VM_SPICE_CLIENT     0 leaves the client to you (default: 1)
       MBP_APPLE_VM_CPUS             Virtual CPU count (default: every host core)
@@ -221,7 +222,7 @@ writeShellApplication {
     stop=0
     attach=0
     client="''${MBP_APPLE_VM_SPICE_CLIENT:-1}"
-    outputs="''${MBP_APPLE_VM_OUTPUTS:-auto}"
+    outputs="''${MBP_APPLE_VM_OUTPUTS:-1}"
     display="''${MBP_APPLE_VM_DISPLAY:-spice}"
     state_dir="''${MBP_APPLE_VM_STATE_DIR:-''${XDG_DATA_HOME:-$HOME/Library/Application Support}/mbp-apple-silicon-vm}"
     # Where --bootstrap fetches the guest's disko scripts
