@@ -12,7 +12,7 @@
   nixpkgs.hostPlatform = "aarch64-linux";
 
   networking = {
-    hostName = lib.mkDefault "mbp-apple-silicon";
+    hostName = lib.mkDefault "guest-nixos-vm";
     networkmanager.enable = lib.mkDefault true;
   };
 
