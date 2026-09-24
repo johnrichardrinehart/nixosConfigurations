@@ -12,6 +12,7 @@
   lib,
   librsvg,
   makeWrapper,
+  perl,
   qemu,
   runCommand,
   serialProvisioner,
@@ -49,6 +50,7 @@ writeShellApplication {
     expect
     jq
     qemu
+    perl
     socat
     spicyClient
   ];
@@ -56,10 +58,11 @@ writeShellApplication {
   text = ''
     usage() {
       cat <<'EOF'
-    Usage: mbp-apple-silicon-qemu-vm [--installer] [--reset] [--mount] [--outputs N|auto]
+    Usage: mbp-apple-silicon-qemu-vm [--outputs N|auto]
                                      [--display spice|cocoa|none] [--no-client]
                                      [--state-dir PATH] [--guest-flake REF]
                                      [-- QEMU arguments...]
+           mbp-apple-silicon-qemu-vm --bootstrap [--reset | --mount] [options as above]
            mbp-apple-silicon-qemu-vm --attach [--state-dir PATH]
            mbp-apple-silicon-qemu-vm --stop [--state-dir PATH]
 
@@ -73,9 +76,22 @@ writeShellApplication {
     monitor later and the guest keeps the outputs it booted with, so restart
     the VM to pick up the new one.
 
-    A newly created disk boots the pinned NixOS ARM installer, partitions
-    /dev/vda with Disko and mounts it under /mnt; install with nixos-install.
-    Later runs boot the installed system through EDK2.
+    A regular run boots the installed system through EDK2 and gives the
+    terminal nothing of the guest: no console, just the launcher's own output.
+    Reach the guest through SPICE or over SSH (127.0.0.1:MBP_APPLE_VM_SSH_PORT).
+    Ctrl-C, closing the terminal, or --stop from another one all shut it down
+    the same way: unmount the shares, press the virtual power button, and wait
+    up to MBP_APPLE_VM_STOP_TIMEOUT for the guest to power itself off before
+    SIGTERM and then SIGKILL. A second Ctrl-C skips the wait. QEMU runs in a
+    session of its own, so the terminal's signals only ever reach the launcher.
+
+    --bootstrap boots the pinned NixOS ARM installer instead, with its console
+    on this terminal (Ctrl-C there goes to the installer). On a disk that is
+    new or whose provisioning never finished, it partitions /dev/vda with
+    Disko and mounts it under /mnt, then hands over the installer shell;
+    install with nixos-install. A regular run refuses such a disk and asks for
+    --bootstrap. --reset (with --bootstrap) deletes the disk and EDK2
+    variables first and provisions from scratch.
 
     Displays:
       spice   headless QEMU serving SPICE on a unix socket in the state
@@ -93,12 +109,13 @@ writeShellApplication {
     a server mode click is swallowed rather than forwarded, so the guest stops
     seeing the mouse entirely.
 
-    --mount boots the installer and mounts the existing filesystems under /mnt
-    with disko's own options, which is how to reinstall without reformatting.
+    --mount (with --bootstrap) boots the installer and mounts the existing
+    filesystems under /mnt with disko's own options, which is how to reinstall
+    without reformatting.
     Mounting the ESP by hand instead leaves it world readable and systemd-boot
     writes its random seed into a world accessible file.
 
-    The disko scripts those three options run are fetched, inside the guest,
+    The disko scripts --bootstrap runs are fetched, inside the guest,
     from the flake reference printed as "provisioning from ...". It is this
     flake's own revision when there is one to name; a working tree with
     uncommitted changes has none, so it falls back to the main branch, which
@@ -197,7 +214,7 @@ writeShellApplication {
     EOF
     }
 
-    installer=0
+    bootstrap=0
     provision=0
     mount_only=0
     reset=0
@@ -207,7 +224,7 @@ writeShellApplication {
     outputs="''${MBP_APPLE_VM_OUTPUTS:-auto}"
     display="''${MBP_APPLE_VM_DISPLAY:-spice}"
     state_dir="''${MBP_APPLE_VM_STATE_DIR:-''${XDG_DATA_HOME:-$HOME/Library/Application Support}/mbp-apple-silicon-vm}"
-    # Where --installer, --reset and --mount fetch the guest's disko scripts
+    # Where --bootstrap fetches the guest's disko scripts
     # from. The compiled-in default is this flake's own revision, but a working
     # tree with uncommitted changes has no revision to name, so it falls back
     # to a branch that may not carry this host at all. Overridable for exactly
@@ -215,17 +232,15 @@ writeShellApplication {
     guest_flake="''${MBP_APPLE_VM_GUEST_FLAKE:-${lib.escapeShellArg guestFlake}}"
     while (( $# > 0 )); do
       case "$1" in
-        --installer)
-          installer=1
+        --bootstrap)
+          bootstrap=1
           shift
           ;;
         --reset)
-          installer=1
           reset=1
           shift
           ;;
         --mount)
-          installer=1
           mount_only=1
           shift
           ;;
@@ -359,6 +374,61 @@ writeShellApplication {
       echo "--attach and --stop are alternatives" >&2
       exit 2
     fi
+    if (( (reset || mount_only) && !bootstrap )); then
+      echo "--reset and --mount act on the installer; use them with --bootstrap" >&2
+      exit 2
+    fi
+    if (( reset && mount_only )); then
+      echo "--reset and --mount are alternatives" >&2
+      exit 2
+    fi
+    installer=$bootstrap
+
+    stop_timeout="''${MBP_APPLE_VM_STOP_TIMEOUT:-120}"
+    if [[ ! "$stop_timeout" =~ ^[0-9]+$ ]]; then
+      echo "MBP_APPLE_VM_STOP_TIMEOUT must be a non-negative integer" >&2
+      exit 1
+    fi
+
+    # Shuts down the VM whose QEMU is $1: an ACPI power button press, so the
+    # guest unmounts its filesystems on the way down, then SIGTERM once
+    # stop_timeout runs out - SIGTERM only ends QEMU, which the guest
+    # experiences as the plug coming out - and SIGKILL if even that is
+    # ignored. force_stop, set by a second Ctrl-C, cuts the wait short.
+    force_stop=0
+    power_down() {
+      local pid=$1 waited=0
+      if [[ -S "$qmp_socket" ]]; then
+        echo "asking the guest (pid $pid) to power down"
+        printf '%s\n' '{"execute":"qmp_capabilities"}' '{"execute":"system_powerdown"}' \
+          | socat -T5 - "UNIX-CONNECT:$qmp_socket" >/dev/null 2>&1 || true
+      else
+        # A VM from before QMP existed here, or one whose socket was lost.
+        echo "no QMP socket at $qmp_socket; sending SIGTERM to pid $pid" >&2
+        kill "$pid" 2>/dev/null || true
+      fi
+      while (( waited < stop_timeout && !force_stop )) && kill -0 "$pid" 2>/dev/null; do
+        sleep 1
+        waited=$(( waited + 1 ))
+      done
+      if kill -0 "$pid" 2>/dev/null; then
+        if (( force_stop )); then
+          echo "forcing it: sending SIGTERM" >&2
+        else
+          echo "guest did not stop within ''${stop_timeout}s; sending SIGTERM" >&2
+        fi
+        kill "$pid" 2>/dev/null || true
+        waited=0
+        while (( waited < 10 )) && kill -0 "$pid" 2>/dev/null; do
+          sleep 1
+          waited=$(( waited + 1 ))
+        done
+      fi
+      if kill -0 "$pid" 2>/dev/null; then
+        echo "QEMU ignored SIGTERM; sending SIGKILL" >&2
+        kill -9 "$pid" 2>/dev/null || true
+      fi
+    }
 
     if (( attach )); then
       if ! vm_pid >/dev/null; then
@@ -406,42 +476,8 @@ writeShellApplication {
         echo "no VM is running against $state_dir"
         exit 0
       fi
-      stop_timeout="''${MBP_APPLE_VM_STOP_TIMEOUT:-120}"
-      if [[ ! "$stop_timeout" =~ ^[0-9]+$ ]]; then
-        echo "MBP_APPLE_VM_STOP_TIMEOUT must be a non-negative integer" >&2
-        exit 1
-      fi
       unmount_shares
-      if [[ -S "$qmp_socket" ]]; then
-        # An ACPI power button press, so the guest unmounts its filesystems on
-        # the way down. SIGTERM only ends QEMU, which the guest experiences as
-        # the plug coming out.
-        echo "asking the guest (pid $stop_pid) to power down"
-        printf '%s\n' '{"execute":"qmp_capabilities"}' '{"execute":"system_powerdown"}' \
-          | socat -T5 - "UNIX-CONNECT:$qmp_socket" >/dev/null 2>&1 || true
-      else
-        # A VM from before QMP existed here, or one whose socket was lost.
-        echo "no QMP socket at $qmp_socket; sending SIGTERM to pid $stop_pid" >&2
-        kill "$stop_pid" 2>/dev/null || true
-      fi
-      waited=0
-      while (( waited < stop_timeout )) && kill -0 "$stop_pid" 2>/dev/null; do
-        sleep 1
-        waited=$(( waited + 1 ))
-      done
-      if kill -0 "$stop_pid" 2>/dev/null; then
-        echo "guest did not stop within ''${stop_timeout}s; sending SIGTERM" >&2
-        kill "$stop_pid" 2>/dev/null || true
-        waited=0
-        while (( waited < 10 )) && kill -0 "$stop_pid" 2>/dev/null; do
-          sleep 1
-          waited=$(( waited + 1 ))
-        done
-      fi
-      if kill -0 "$stop_pid" 2>/dev/null; then
-        echo "QEMU ignored SIGTERM; sending SIGKILL" >&2
-        kill -9 "$stop_pid" 2>/dev/null || true
-      fi
+      power_down "$stop_pid"
       echo "stopped"
       exit 0
     fi
@@ -546,11 +582,15 @@ writeShellApplication {
         return 0
       fi
       cleaned=1
+      # Every step has to run whatever the one before it did: a write to a
+      # terminal that has gone away fails, and errexit would otherwise end the
+      # launcher here and leave QEMU, in its own session, running headless.
+      set +e
       # The mounter first, so it cannot mount anything behind the unmount, and
       # then the shares, while the guest can still answer for them.
       if [[ -n "$mounter_pid" ]]; then
-        kill "$mounter_pid" 2>/dev/null || true
-        wait "$mounter_pid" 2>/dev/null || true
+        kill "$mounter_pid" 2>/dev/null
+        wait "$mounter_pid" 2>/dev/null
       fi
       if vm_pid >/dev/null; then
         unmount_shares
@@ -564,39 +604,64 @@ writeShellApplication {
       #
       # The guest does not outlive its launcher either way. An orphaned QEMU is
       # precisely the state this whole file is trying to avoid: a VM still
-      # running, with no display, owned by nobody.
-      if [[ -n "$qemu_pid" ]] && kill -0 "$qemu_pid" 2>/dev/null; then
-        kill "$qemu_pid" 2>/dev/null || true
-        wait "$qemu_pid" 2>/dev/null || true
-      elif (( launched )); then
-        # The provisioning path runs QEMU under expect, so the pidfile is the
-        # only handle on it. We hold the lock, so whatever is in there is ours.
-        stray=$(vm_pid) || stray=""
-        if [[ -n "$stray" ]]; then
-          kill "$stray" 2>/dev/null || true
-        fi
+      # running, with no display, owned by nobody. The pidfile covers the
+      # provisioning path too, where expect owns QEMU; we hold the lock, so
+      # whatever is in there is ours.
+      if (( launched )) && running=$(vm_pid); then
+        power_down "$running"
+      fi
+      if [[ -n "$qemu_pid" ]]; then
+        wait "$qemu_pid" 2>/dev/null
       fi
       if [[ -n "$client_pid" ]]; then
-        kill "$client_pid" 2>/dev/null || true
-        wait "$client_pid" 2>/dev/null || true
+        kill "$client_pid" 2>/dev/null
+        wait "$client_pid" 2>/dev/null
       fi
       rm -f "$spice_socket" "$qmp_socket"
       rm -rf "$lock_dir"
     }
-    trap cleanup EXIT INT TERM HUP
+    # Ctrl-C and TERM: the --stop sequence, with a second Ctrl-C forcing it.
+    # A closed terminal (HUP) the same, logging to the state directory since
+    # there is nowhere left to print. EXIT covers QEMU ending on its own.
+    # shellcheck disable=SC2329 # invoked by the traps below
+    on_signal() {
+      trap 'force_stop=1' INT
+      echo
+      echo "shutting the guest down; Ctrl-C again to force it"
+      cleanup
+      trap - EXIT
+      exit 130
+    }
+    # shellcheck disable=SC2329 # invoked by the traps below
+    on_hangup() {
+      exec >>"$state_dir/launcher.log" 2>&1
+      echo "$(date): terminal closed; shutting the guest down"
+      cleanup
+      trap - EXIT
+      exit 129
+    }
+    trap on_signal INT TERM
+    trap on_hangup HUP
+    trap cleanup EXIT
 
     if (( reset )); then
       rm -f "$disk" "$firmware_vars" "$needs_provision"
     fi
 
     if [[ ! -e "$disk" ]]; then
+      if (( ! bootstrap )); then
+        echo "there is no disk at $disk yet; create and provision one with --bootstrap" >&2
+        exit 1
+      fi
       truncate -s "''${MBP_APPLE_VM_DISK_SIZE:-512G}" "$disk"
       touch "$needs_provision"
-      installer=1
     fi
 
     if [[ -e "$needs_provision" ]]; then
-      installer=1
+      if (( ! bootstrap )); then
+        echo "$disk was never fully provisioned; finish it with --bootstrap" >&2
+        exit 1
+      fi
       provision=1
     fi
 
@@ -656,11 +721,9 @@ writeShellApplication {
       -device virtio-tablet-pci
       -device virtio-serial-pci
       # A USB controller is here unconditionally rather than only under
-      # --installer: redirected devices need somewhere to attach, and the
+      # --bootstrap: redirected devices need somewhere to attach, and the
       # installer's ISO drive hangs off this same xhci.
       -device "qemu-xhci,id=xhci"
-      -chardev "stdio,id=console,signal=off"
-      -device "virtconsole,chardev=console"
       -drive "if=none,id=root,format=raw,file=$disk"
       -device "virtio-blk-pci,drive=root,bootindex=0"
       -serial none
@@ -688,6 +751,11 @@ writeShellApplication {
       # The ISO's GRUB never reaches a serial line, so boot its kernel directly
       # and attach the image itself for the initrd to find by label.
       qemu_args+=(
+        # The installer's console, on this terminal: raw, so Ctrl-C reaches
+        # the installer rather than ending the launcher. Regular runs have
+        # none.
+        -chardev "stdio,id=console,signal=off"
+        -device "virtconsole,chardev=console"
         -kernel "${installerBoot}/Image"
         -initrd "${installerBoot}/initrd"
         -append "$(cat ${installerBoot}/cmdline)"
@@ -1092,19 +1160,29 @@ writeShellApplication {
       else
         status=$?
       fi
+    elif (( bootstrap )); then
+      # The bare installer: QEMU in the background with this terminal as its
+      # console. A background command with no redirection of its own would be
+      # handed /dev/null and lose the virtconsole.
+      exec 9<&0
+      launched=1
+      qemu-system-aarch64 "''${qemu_args[@]}" "$@" <&9 &
+      qemu_pid=$!
+      status=0
+      wait "$qemu_pid" || status=$?
+      qemu_pid=""
     else
       if (( ''${#shares[@]} > 0 )); then
         mount_shares &
         mounter_pid=$!
       fi
-      # QEMU in the background, with stdin explicitly passed through: bash runs
-      # traps while it sits in wait, so a Ctrl-C or a closing terminal tears the
-      # guest down instead of orphaning it, and cleanup has a pid to aim at. A
-      # background command with no redirection of its own would be handed
-      # /dev/null and lose the virtconsole.
-      exec 9<&0
+      # QEMU in a session of its own, reading nothing from this terminal:
+      # the terminal's Ctrl-C and hangup go to the launcher alone, which then
+      # shuts the guest down properly instead of QEMU dropping it on the spot.
+      # bash runs traps while it sits in wait, so they fire promptly.
       launched=1
-      qemu-system-aarch64 "''${qemu_args[@]}" "$@" <&9 &
+      perl -MPOSIX -e 'POSIX::setsid() or die "setsid: $!\n"; exec { $ARGV[0] } @ARGV or die "exec: $!\n"' \
+        qemu-system-aarch64 "''${qemu_args[@]}" "$@" </dev/null &
       qemu_pid=$!
       status=0
       wait "$qemu_pid" || status=$?
