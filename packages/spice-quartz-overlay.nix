@@ -1,4 +1,4 @@
-# The SPICE client's GTK carries two quartz fixes, so it has to be a distinct
+# The SPICE client's GTK carries four quartz fixes, so it has to be a distinct
 # build. Both live under their own attribute names here: gtk3 and spice-gtk
 # keep their usual nixpkgs meaning for everything else in the set.
 final: prev: {
@@ -16,6 +16,16 @@ final: prev: {
         url = "https://gitlab.gnome.org/johnrichardrinehart/gtk/-/commit/b33cff2db0d6a021bc9c784b2a68f8735ca7eebd.patch";
         hash = "sha256-aBu9s5UlHxtwoYzXMofoBlbvTugIybd+PX1b7aCNGGc=";
       })
+      # The TARGETS list advertises public.png as image/png (and any other
+      # UTI under its MIME name), but reading contents looked the MIME name
+      # up verbatim, so only text and image/tiff ever returned data. spice-gtk
+      # announced PNG to the guest, got 0 bytes back and never answered, and
+      # every guest reader of image/png hung until the next clipboard change.
+      ./gtk3-quartz-clipboard-read-uti.patch
+      # The macOS screenshot tool copies images as TIFF alone, and guest
+      # consumers such as omp only take PNG. Offer image/png for a TIFF-only
+      # pasteboard and convert on request. Applies on top of the patch above.
+      ./gtk3-quartz-clipboard-tiff-as-png.patch
     ];
   });
 

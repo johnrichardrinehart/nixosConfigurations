@@ -1,0 +1,79 @@
+quartz: Offer image/png for TIFF-only pasteboards
+
+The macOS screenshot tool copies an image as public.tiff alone. Advertise
+image/png alongside it and convert with NSBitmapImageRep on request, so
+clipboard consumers that only take PNG can still paste it.
+
+The TARGETS buffer was sized from the pasteboard type count; size it from
+the atom list instead now that the list can be longer. Also free it, since
+gtk_selection_data_set copies.
+
+--- a/gtk/gtkquartz.c
++++ b/gtk/gtkquartz.c
+@@ -169,6 +169,15 @@
+       result = g_list_prepend (result, GDK_ATOM_TO_POINTER (atom));
+     }
+ 
++  /* Some sources put an image on the pasteboard as TIFF alone - the macOS
++   * screenshot tool does. image/png is what most consumers on the other
++   * end of a clipboard bridge can read, so offer it as well;
++   * _gtk_quartz_get_selection_data_from_pasteboard converts on request. */
++  if ([array containsObject:GDK_QUARTZ_TIFF_PBOARD_TYPE] &&
++      ![array containsObject:NSPasteboardTypePNG])
++    result = g_list_prepend (result,
++                             GDK_ATOM_TO_POINTER (gdk_atom_intern_static_string ("image/png")));
++
+   return result;
+ }
+ 
+@@ -265,6 +274,18 @@
+        * verbatim finds nothing. */
+       data = [pasteboard dataForType:gdk_quartz_target_to_pasteboard_type_libgtk_only (name)];
+ 
++      /* image/png offered on behalf of a TIFF-only pasteboard; see
++       * _gtk_quartz_pasteboard_types_to_atom_list. */
++      if (!data && strcmp (name, "image/png") == 0)
++        {
++          NSData *tiff = [pasteboard dataForType:GDK_QUARTZ_TIFF_PBOARD_TYPE];
++          NSBitmapImageRep *rep = tiff ? [NSBitmapImageRep imageRepWithData:tiff] : nil;
++
++          if (rep)
++            data = [rep representationUsingType:NSBitmapImageFileTypePNG
++                                     properties:@{}];
++        }
++
+       g_free (name);
+ 
+       if (data)
+--- a/gtk/gtkclipboard-quartz.c
++++ b/gtk/gtkclipboard-quartz.c
+@@ -839,17 +839,18 @@
+       GList *atom_list, *l;
+       GdkAtom *atoms;
+ 
+-      length = [types count] * sizeof (GdkAtom);
+-
+       selection_data = g_slice_new0 (GtkSelectionData);
+       selection_data->selection = clipboard->selection;
+       selection_data->target = target;
+       if (!selection_data->display)
+ 	selection_data->display = gdk_display_get_default ();
+ 
++      /* Size from the atom list, not the pasteboard: the list can carry
++       * targets synthesized from other types (image/png for TIFF). */
++      atom_list = _gtk_quartz_pasteboard_types_to_atom_list (types);
++      length = g_list_length (atom_list) * sizeof (GdkAtom);
+       atoms = g_malloc (length);
+ 
+-      atom_list = _gtk_quartz_pasteboard_types_to_atom_list (types);
+       for (l = atom_list, i = 0; l ; l = l->next, i++)
+ 	atoms[i] = GDK_POINTER_TO_ATOM (l->data);
+       g_list_free (atom_list);
+@@ -857,6 +858,7 @@
+       gtk_selection_data_set (selection_data,
+                               GDK_SELECTION_TYPE_ATOM, 32,
+                               (guchar *)atoms, length);
++      g_free (atoms);
+ 
+       [pool release];
+ 

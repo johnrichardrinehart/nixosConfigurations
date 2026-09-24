@@ -1,0 +1,25 @@
+quartz: Translate clipboard targets to pasteboard types when reading
+
+The TARGETS list maps pasteboard UTIs to MIME names (public.png ->
+image/png), but reading contents looked the MIME name up verbatim, so
+every target other than text and image/tiff came back empty.
+
+--- a/gtk/gtkquartz.c
++++ b/gtk/gtkquartz.c
+@@ -258,10 +258,12 @@
+ 
+       name = gdk_atom_name (target);
+ 
+-      if (strcmp (name, "image/tiff") == 0)
+-	data = [pasteboard dataForType:GDK_QUARTZ_TIFF_PBOARD_TYPE];
+-      else
+-	data = [pasteboard dataForType:[NSString stringWithUTF8String:name]];
++      /* Translate the target the same way the TARGETS list was built
++       * (gdk_quartz_pasteboard_type_to_atom_libgtk_only): targets such as
++       * image/png are advertised under their MIME name but stored on the
++       * pasteboard under a UTI (public.png), so looking the MIME name up
++       * verbatim finds nothing. */
++      data = [pasteboard dataForType:gdk_quartz_target_to_pasteboard_type_libgtk_only (name)];
+ 
+       g_free (name);
+ 
