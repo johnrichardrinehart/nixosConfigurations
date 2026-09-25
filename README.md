@@ -16,7 +16,6 @@ It exposes `nixosConfigurations` for the managed hosts:
 - `rock5c-nas`
 - `thinkpad_w510`
 - `virtualbox`
-- `vultr`
 
 ## Mac host (`darwinConfigurations.mbp-host`)
 
