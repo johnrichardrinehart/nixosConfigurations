@@ -65,9 +65,4 @@
   boot.kernelModules = [ "v4l2loopback" ];
   boot.extraModprobeConfig = "options usb-storage quirks=152d:0562:u";
 
-  # SOPS configuration temporarily disabled for building
-  # sops.defaultSopsFile = ../../secrets/sops.yaml;
-  # sops.age.sshKeyPaths = [ "/home/john/.ssh/sops" ];
-  # sops.secrets.backblaze-passwd-s3fs-rinehartstorage = { };
-  # sops.secrets.backblaze-passwd-gocryptfs-rinehartstorage = { };
 }

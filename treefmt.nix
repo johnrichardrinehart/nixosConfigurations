@@ -44,7 +44,6 @@
       enable = true;
       settings = {
         extends = "default";
-        ignore = "secrets/sops.yaml";
         rules.truthy.allowed-values = [
           "true"
           "false"
