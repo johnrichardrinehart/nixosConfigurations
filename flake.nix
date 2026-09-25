@@ -155,6 +155,10 @@
         in
         {
           nixosConfigurations = (import ./nixos-configurations inputs) // {
+            nebula-lighthouse = inputs.nixosModules.lib.nixosSystem {
+              modules = [ ./nixos-configurations/nebula-lighthouse ];
+              specialArgs = { inherit inputs; };
+            };
             mbp-apple-silicon-bootstrap = inputs.nixosModules.lib.nixosSystem {
               modules = [ ./nixos-configurations/mbp-apple-silicon/bootstrap.nix ];
               specialArgs = { inherit inputs; };
