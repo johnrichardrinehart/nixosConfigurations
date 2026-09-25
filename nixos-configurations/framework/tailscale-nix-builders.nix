@@ -61,6 +61,8 @@ in
   systemd.tmpfiles.rules = [
     "d ${statePath} 0700 ${primaryUser} ${primaryGroup} -"
     "z ${statePath} 0700 ${primaryUser} ${primaryGroup} -"
+    "d ${statePath}/known-hosts 0700 ${primaryUser} ${primaryGroup} -"
+    "Z ${statePath}/known-hosts 0700 ${primaryUser} ${primaryGroup} -"
   ];
 
   systemd.user.services.tailscale-nix-builders = {
