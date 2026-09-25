@@ -23,6 +23,13 @@ in
     lighthouses = [ "10.77.0.1" ];
     staticHostMap."10.77.0.1" = [ "nebula-lighthouse.johnrinehart.dev:4242" ];
     listen.port = 0;
+    # Peers reach framie through the lighthouse when NAT blocks a direct
+    # tunnel, and answer the lighthouse's punch notifications otherwise.
+    relays = [ "10.77.0.1" ];
+    settings.punchy = {
+      punch = true;
+      respond = true;
+    };
     # Nebula denies outbound traffic unless a rule permits it.
     firewall.outbound = [
       {

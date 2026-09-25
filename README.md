@@ -105,7 +105,10 @@ The `framework` configuration gives `framie` the Nebula address
 `10.77.0.2/24`. It contacts the lighthouse at `10.77.0.1` through
 `nebula-lighthouse.johnrinehart.dev:4242`. The client uses an ephemeral UDP
 port. Its Nebula firewall accepts overlay ICMP and TCP 22. It permits
-outbound TCP 22 only to the lighthouse.
+outbound TCP 22 only to the lighthouse. It answers the lighthouse's punch
+notifications and advertises the lighthouse, which is also a Nebula relay,
+as its relay, so peers behind NAT reach it through `10.77.0.1` when a direct
+tunnel fails.
 
 `secrets/nebula-ca.yaml` contains the encrypted CA signing key.
 `secrets/nebula-framework.yaml` contains the public CA certificate and
