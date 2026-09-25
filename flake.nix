@@ -21,6 +21,11 @@
       inputs.nixpkgs.follows = "nixosModules/nixpkgs";
     };
 
+    nix-darwin = {
+      url = "github:nix-darwin/nix-darwin/nix-darwin-26.05";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     nixos-hardware = {
       url = "github:NixOS/nixos-hardware";
       inputs.nixpkgs.follows = "nixosModules/nixpkgs";
@@ -125,6 +130,28 @@
               ;
           };
           mbpAppleSiliconQemuVm = aarch64DarwinPkgs.callPackage ./packages/mbp-apple-silicon-qemu-vm.nix vmArgs;
+
+          # The Mac host itself. Downstream flakes add their own modules with
+          # `mkMbpHost { modules = [ ... ]; }` and get a matching provisioner
+          # from `mkProvisionMac`.
+          mbpHostModule = import ./darwin-configurations/mbp-host { inherit inputs; };
+          mkMbpHost =
+            {
+              modules ? [ ],
+            }:
+            inputs.nix-darwin.lib.darwinSystem { modules = [ mbpHostModule ] ++ modules; };
+          mkProvisionMac =
+            darwinConfiguration:
+            let
+              provisioner = aarch64DarwinPkgs.callPackage ./packages/provision-mac.nix {
+                inherit darwinConfiguration;
+              };
+            in
+            {
+              type = "app";
+              program = "${provisioner}/bin/provision-mac";
+            };
+          mbpHost = mkMbpHost { };
         in
         {
           nixosConfigurations = (import ./nixos-configurations inputs) // {
@@ -154,6 +181,10 @@
                 _module.args.inputs = lib.mkDefault inputs;
               };
           };
+          darwinModules.mbp-host = mbpHostModule;
+          darwinConfigurations.mbp-host = mbpHost;
+
+          lib = { inherit mkMbpHost mkProvisionMac; };
 
           packages.aarch64-darwin = {
             mbp-apple-silicon-qemu-vm = mbpAppleSiliconQemuVm;
@@ -163,6 +194,7 @@
               type = "app";
               program = "${mbpAppleSiliconQemuVm}/bin/mbp-apple-silicon-qemu-vm";
             };
+            provision-mac = mkProvisionMac mbpHost;
           };
         };
     };
