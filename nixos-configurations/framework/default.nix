@@ -11,6 +11,7 @@ in
 {
   imports = [
     ./framework.nix
+    ./moonshine.nix
     ./tailscale-nix-builders.nix
   ];
 

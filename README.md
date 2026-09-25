@@ -63,3 +63,12 @@ the first. Once everything is done it only prints "no manual steps pending".
 Downstream flakes extend the host with
 `lib.mkMbpHost { modules = [ ... ]; }` and expose a matching provisioner with
 `lib.mkProvisionMac`. Per-user additions go under `home-manager.users.john`.
+
+## Framework voice dictation
+
+`framework` uses converted ONNX Moonshine models with OpenVINO. Its package
+override removes the ORT-only format setting from the streaming loader.
+The frontend model needs three external weights from `frontend.weights.onnx`.
+The model build checks their names and shapes against the frontend inputs.
+Before switching the system, load the model and process an audio chunk.
+The package's unit tests do not exercise model inference.
