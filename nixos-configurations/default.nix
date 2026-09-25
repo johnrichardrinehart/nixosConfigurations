@@ -3,17 +3,23 @@ let
   inherit (inputs.nixosModules) lib;
   johnosModules = inputs.nixosModules;
 in
-lib.mapAttrs (
-  dir: _:
-  lib.nixosSystem {
-    modules = [
-      {
-        nixpkgs.overlays = [ johnosModules.overlays.default ];
-      }
-      ./${dir}
-      johnosModules.nixosModules.default
-    ];
+lib.mapAttrs
+  (
+    dir: _:
+    lib.nixosSystem {
+      modules = [
+        {
+          nixpkgs.overlays = [ johnosModules.overlays.default ];
+        }
+        ./${dir}
+        johnosModules.nixosModules.default
+      ];
 
-    specialArgs = { inherit inputs; };
-  }
-) (lib.filterAttrs (_: type: type == "directory") (builtins.readDir ./.))
+      specialArgs = { inherit inputs; };
+    }
+  )
+  (
+    lib.filterAttrs (dir: type: type == "directory" && dir != "nebula-lighthouse") (
+      builtins.readDir ./.
+    )
+  )
