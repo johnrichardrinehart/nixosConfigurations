@@ -26,6 +26,11 @@ in
     ca = config.sops.secrets.nebula-ca.path;
     cert = config.sops.secrets.nebula-cert.path;
     key = config.sops.secrets.nebula-key.path;
+    # SSH to other peers, including Android phones running Termux's sshd on 8022.
+    peerSshPorts = [
+      "22"
+      "8022"
+    ];
   };
 
   # Refuse retired mycelium certificates; see the file for why each is listed.
