@@ -137,7 +137,10 @@ DNS for `mycelium.nebula.johnrinehart.dev` comes from that history:
 `framework.mycelium.nebula.johnrinehart.dev` and
 `lighthouse.mycelium.nebula.johnrinehart.dev`. It is served on `10.77.0.1:53`,
 reachable only through Nebula. Hosts route only that zone to the lighthouse
-with systemd-resolved; other names resolve as before.
+with systemd-resolved; other names resolve as before. Clients without split
+DNS, such as Mobile Nebula releases without match domains, send every lookup
+to `10.77.0.1`; the registry forwards names outside the overlay to `1.1.1.1`
+and then `9.9.9.9`, so the lighthouse and those resolvers see those lookups.
 
 `https://lighthouse.mycelium.nebula.johnrinehart.dev/` (and `/api/peers` as
 JSON) shows peers inside the caller's certificate networks. The caller is

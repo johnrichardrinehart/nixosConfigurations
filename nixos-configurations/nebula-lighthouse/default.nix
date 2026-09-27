@@ -149,6 +149,12 @@ in
       address = overlayAddress;
       consolePort = 2222;
     };
+    # Mobile Nebula without match domains sends every lookup to the
+    # lighthouse; forward names outside the overlay so phones keep working.
+    upstreamResolvers = [
+      "1.1.1.1"
+      "9.9.9.9"
+    ];
   };
 
   system.stateVersion = "26.05";
