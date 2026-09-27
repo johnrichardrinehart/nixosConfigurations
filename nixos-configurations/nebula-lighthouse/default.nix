@@ -120,6 +120,8 @@ in
     # Clients behind NAT that cannot punch through to each other tunnel
     # through the lighthouse instead.
     isRelay = true;
+    # Refuse retired mycelium certificates; see the file for why each is listed.
+    settings.pki.blocklist = import ../mycelium-blocklist.nix;
     listen.port = 4242;
     # Certificate identity is 10.77.0.1/24. Nebula assigns the tunnel IP from
     # the externally supplied certificate, not from networking.interfaces.

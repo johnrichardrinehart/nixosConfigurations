@@ -27,4 +27,7 @@ in
     cert = config.sops.secrets.nebula-cert.path;
     key = config.sops.secrets.nebula-key.path;
   };
+
+  # Refuse retired mycelium certificates; see the file for why each is listed.
+  services.nebula.networks.mycelium.settings.pki.blocklist = import ../mycelium-blocklist.nix;
 }
