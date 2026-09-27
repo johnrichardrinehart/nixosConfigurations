@@ -311,6 +311,10 @@ in
     ];
     wants = [ "network-online.target" ];
     wantedBy = [ "multi-user.target" ];
+    # tailscaled's ExecStop runs `tailscale down`, which persists
+    # WantRunning=false. Restart with it (e.g. when a switch restarts
+    # tailscaled) so Tailscale comes back up.
+    partOf = [ "tailscaled.service" ];
 
     serviceConfig = {
       Type = "oneshot";
