@@ -1,5 +1,5 @@
-# The SPICE client's GTK carries four quartz fixes, so it has to be a distinct
-# build, and spicy one fix of its own. Both live under their own attribute
+# The SPICE client's GTK carries five quartz fixes, so it has to be a distinct
+# build, and spicy fixes of its own. Both live under their own attribute
 # names here: gtk3 and spice-gtk keep their usual nixpkgs meaning for
 # everything else in the set.
 final: prev: {
@@ -27,6 +27,13 @@ final: prev: {
       # consumers such as omp only take PNG. Offer image/png for a TIFF-only
       # pasteboard and convert on request. Applies on top of the patch above.
       ./gtk3-quartz-clipboard-tiff-as-png.patch
+      # A modifier key's press or release was judged by the flag both keys
+      # of its left/right pair share, so releasing one Shift while holding
+      # the other came out as another press: the guest kept that Shift held
+      # until spicy lost and regained focus. Decide by the key's own
+      # device-dependent bit. Commit d6adfa9 on johnrichardrinehart's
+      # quartz-modifier-sides branch (gtk-3-24), not yet pushed or proposed.
+      ./gtk3-quartz-modifier-sides.patch
     ];
   });
 

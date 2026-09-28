@@ -1,0 +1,96 @@
+From d6adfa92514a7adbe8aa6f30cea6d0549516a307 Mon Sep 17 00:00:00 2001
+From: John Rinehart <johnrichardrinehart@gmail.com>
+Date: Mon, 28 Sep 2026 12:52:13 -0400
+Subject: [PATCH] quartz: Tell left and right modifier keys apart
+
+A flags-changed event for a modifier key was reported as a press or a
+release by testing the device-independent mask of the modifier, such as
+NSEventModifierFlagShift. That mask is shared by both keys of a
+left/right pair and stays set while either is held, so releasing one
+Shift while the other is down was reported as another press of the
+released key, and its release never came. Clients that track key state,
+such as a remote desktop or VM viewer, then keep that key held until
+something resets it.
+
+Decide by the key's own device-dependent bit (NX_DEVICELSHIFTKEYMASK
+and friends) when the event carries any for the pair, and fall back to
+the shared mask when it does not, as synthesized events may not.
+---
+ gdk/quartz/gdkkeys-quartz.c | 41 ++++++++++++++++++++++++++-----------
+ 1 file changed, 29 insertions(+), 12 deletions(-)
+
+diff --git a/gdk/quartz/gdkkeys-quartz.c b/gdk/quartz/gdkkeys-quartz.c
+index 701588d0cd..c7b9f95842 100644
+--- a/gdk/quartz/gdkkeys-quartz.c
++++ b/gdk/quartz/gdkkeys-quartz.c
+@@ -51,6 +51,7 @@
+ 
+ #include <Carbon/Carbon.h>
+ #include <AppKit/NSEvent.h>
++#include <IOKit/hidsystem/IOLLEvent.h>
+ #include "gdk.h"
+ #include "gdkquartzkeys.h"
+ #include "gdkkeysprivate.h"
+@@ -89,20 +90,30 @@ _gdk_quartz_display_get_keymap (GdkDisplay *display)
+  */
+ static guint *keyval_array = NULL;
+ 
++#define SHIFT_SIDES     (NX_DEVICELSHIFTKEYMASK | NX_DEVICERSHIFTKEYMASK)
++#define CONTROL_SIDES   (NX_DEVICELCTLKEYMASK | NX_DEVICERCTLKEYMASK)
++#define ALTERNATE_SIDES (NX_DEVICELALTKEYMASK | NX_DEVICERALTKEYMASK)
++#define COMMAND_SIDES   (NX_DEVICELCMDKEYMASK | NX_DEVICERCMDKEYMASK)
++
+ const static struct {
+   guint keycode;
+   guint keyval;
+   unsigned int modmask; /* So we can tell when a mod key is pressed/released */
++  /* The key's own device-dependent bit and those of both keys of its
++   * left/right pair, so we can tell which of the two changed. Caps Lock
++   * has none. */
++  unsigned int devmask;
++  unsigned int sidesmask;
+ } modifier_keys[] = {
+-  {  54, GDK_KEY_Meta_R,    GDK_QUARTZ_COMMAND_KEY_MASK },
+-  {  55, GDK_KEY_Meta_L,    GDK_QUARTZ_COMMAND_KEY_MASK },
+-  {  56, GDK_KEY_Shift_L,   GDK_QUARTZ_SHIFT_KEY_MASK },
+-  {  57, GDK_KEY_Caps_Lock, GDK_QUARTZ_ALPHA_SHIFT_KEY_MASK },
+-  {  58, GDK_KEY_Alt_L,     GDK_QUARTZ_ALTERNATE_KEY_MASK },
+-  {  59, GDK_KEY_Control_L, GDK_QUARTZ_CONTROL_KEY_MASK },
+-  {  60, GDK_KEY_Shift_R,   GDK_QUARTZ_SHIFT_KEY_MASK },
+-  {  61, GDK_KEY_Alt_R,     GDK_QUARTZ_ALTERNATE_KEY_MASK },
+-  {  62, GDK_KEY_Control_R, GDK_QUARTZ_CONTROL_KEY_MASK }
++  {  54, GDK_KEY_Meta_R,    GDK_QUARTZ_COMMAND_KEY_MASK,     NX_DEVICERCMDKEYMASK,   COMMAND_SIDES },
++  {  55, GDK_KEY_Meta_L,    GDK_QUARTZ_COMMAND_KEY_MASK,     NX_DEVICELCMDKEYMASK,   COMMAND_SIDES },
++  {  56, GDK_KEY_Shift_L,   GDK_QUARTZ_SHIFT_KEY_MASK,       NX_DEVICELSHIFTKEYMASK, SHIFT_SIDES },
++  {  57, GDK_KEY_Caps_Lock, GDK_QUARTZ_ALPHA_SHIFT_KEY_MASK, 0,                      0 },
++  {  58, GDK_KEY_Alt_L,     GDK_QUARTZ_ALTERNATE_KEY_MASK,   NX_DEVICELALTKEYMASK,   ALTERNATE_SIDES },
++  {  59, GDK_KEY_Control_L, GDK_QUARTZ_CONTROL_KEY_MASK,     NX_DEVICELCTLKEYMASK,   CONTROL_SIDES },
++  {  60, GDK_KEY_Shift_R,   GDK_QUARTZ_SHIFT_KEY_MASK,       NX_DEVICERSHIFTKEYMASK, SHIFT_SIDES },
++  {  61, GDK_KEY_Alt_R,     GDK_QUARTZ_ALTERNATE_KEY_MASK,   NX_DEVICERALTKEYMASK,   ALTERNATE_SIDES },
++  {  62, GDK_KEY_Control_R, GDK_QUARTZ_CONTROL_KEY_MASK,     NX_DEVICERCTLKEYMASK,   CONTROL_SIDES }
+ };
+ 
+ const static struct {
+@@ -770,10 +781,16 @@ _gdk_quartz_keys_event_type (NSEvent *event)
+     {
+       if (modifier_keys[i].keycode == keycode)
+ 	{
+-	  if (flags & modifier_keys[i].modmask)
+-	    return GDK_KEY_PRESS;
+-	  else
++	  /* The device-independent mask is shared by both keys of a
++	   * left/right pair, so it stays set when one is released while the
++	   * other is held. Decide by the key's own device-dependent bit when
++	   * the event carries any for this pair; synthesized events may not,
++	   * and then the shared mask is all there is to go on. */
++	  if (!(flags & modifier_keys[i].modmask))
+ 	    return GDK_KEY_RELEASE;
++	  if (flags & modifier_keys[i].sidesmask)
++	    return (flags & modifier_keys[i].devmask) ? GDK_KEY_PRESS : GDK_KEY_RELEASE;
++	  return GDK_KEY_PRESS;
+ 	}
+     }
+   
+-- 
+2.54.0
+
