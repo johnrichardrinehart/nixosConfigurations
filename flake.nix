@@ -16,7 +16,10 @@
     nixpkgs.url = "github:johnrichardrinehart/nixpkgs?ref=rock-5c-nixos-26.05";
 
     home-manager = {
-      url = "github:nix-community/home-manager/release-26.05";
+      # release-26.05 plus nix-community/home-manager#10006 (overwriteBackup
+      # removes a read-only backup without prompting). Back to upstream's
+      # release-26.05 once that is merged and backported.
+      url = "github:johnrichardrinehart/home-manager/release-26.05-overwrite-backup-rm-f";
       flake = true;
       inputs.nixpkgs.follows = "nixosModules/nixpkgs";
     };

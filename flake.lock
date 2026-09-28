@@ -192,16 +192,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1789267039,
-        "narHash": "sha256-LWiBv9yAYFi2LPbUhDGHPGKYskJQjj2fw12OlyO1uQo=",
-        "owner": "nix-community",
+        "lastModified": 1790612401,
+        "narHash": "sha256-gMl7jtojWm3P2AdhtrHb8zDYk2A9bRJm17m9ZOt+gqM=",
+        "owner": "johnrichardrinehart",
         "repo": "home-manager",
-        "rev": "ec172013fa62135f58fb58dd17ae9651e8f39727",
+        "rev": "a958ee7a05aef870d2cfae256e2e8fa62c3dbebc",
         "type": "github"
       },
       "original": {
-        "owner": "nix-community",
-        "ref": "release-26.05",
+        "owner": "johnrichardrinehart",
+        "ref": "release-26.05-overwrite-backup-rm-f",
         "repo": "home-manager",
         "type": "github"
       }
