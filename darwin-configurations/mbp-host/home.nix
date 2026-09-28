@@ -30,6 +30,13 @@ in
       pkgs.tree
       pkgs.watch
       pkgs.wormhole-rs
+      pkgs.ripgrep
+      pkgs.ncdu
+      # GNU timeout alone: all of coreutils would shadow macOS's date, ls, sed...
+      (pkgs.runCommand "timeout" { } ''
+        mkdir -p $out/bin
+        ln -s ${pkgs.coreutils}/bin/timeout $out/bin/timeout
+      '')
       pkgs.repo-manager
       (pkgs.callPackage ../../packages/secretspec/package.nix { })
       inputs.self.packages.aarch64-darwin.mbp-apple-silicon-qemu-vm
@@ -47,7 +54,36 @@ in
 
     # /usr/bin/git and /usr/bin/vim are Xcode shims (git refuses to run until
     # the Xcode license is accepted); the Nix ones come first on PATH.
-    programs.vim.enable = true;
+    programs.vim = {
+      enable = true;
+      extraConfig = ''
+        set encoding=utf-8
+        set number
+
+        " Tell tabs from spaces: a tab shows as », a leading space as a dim ·.
+        set list
+        set listchars=tab:»\ ,lead:·,trail:·,nbsp:␣
+
+        " Trailing whitespace in red, except just behind the cursor while
+        " typing. Re-applied on colorscheme changes, which clear it.
+        highlight ExtraWhitespace ctermbg=red guibg=red
+        augroup ExtraWhitespace
+          autocmd!
+          autocmd ColorScheme * highlight ExtraWhitespace ctermbg=red guibg=red
+          autocmd BufWinEnter,InsertLeave * match ExtraWhitespace /\s\+$/
+          autocmd InsertEnter * match ExtraWhitespace /\s\+\%#\@<!$/
+        augroup END
+
+        " :WipeTrailingSpace strips it from the whole file, or from a range
+        " (:'<,'>WipeTrailingSpace), keeping the cursor and search history.
+        function! s:WipeTrailingSpace(first, last) abort
+          let l:view = winsaveview()
+          keeppatterns execute a:first . ',' . a:last . 's/\s\+$//e'
+          call winrestview(l:view)
+        endfunction
+        command! -range=% WipeTrailingSpace call s:WipeTrailingSpace(<line1>, <line2>)
+      '';
+    };
 
     programs.zsh = {
       enable = true;
@@ -64,6 +100,14 @@ in
         bindkey "^[[1;5D" backward-word
         bindkey "^[[1;5C" forward-word
       '';
+
+      # The git aliases (gst, glg, gd, gaa, ggl, ...) the NixOS hosts have.
+      # oh-my-posh draws the prompt, so no oh-my-zsh theme.
+      oh-my-zsh = {
+        enable = true;
+        plugins = [ "git" ];
+        theme = "";
+      };
     };
 
     programs.direnv = {
