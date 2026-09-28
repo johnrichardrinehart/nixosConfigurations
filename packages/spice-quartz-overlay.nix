@@ -17,16 +17,26 @@ final: prev: {
         url = "https://gitlab.gnome.org/johnrichardrinehart/gtk/-/commit/b33cff2db0d6a021bc9c784b2a68f8735ca7eebd.patch";
         hash = "sha256-aBu9s5UlHxtwoYzXMofoBlbvTugIybd+PX1b7aCNGGc=";
       })
+      # https://gitlab.gnome.org/GNOME/gtk/-/merge_requests/10418
       # The TARGETS list advertises public.png as image/png (and any other
       # UTI under its MIME name), but reading contents looked the MIME name
       # up verbatim, so only text and image/tiff ever returned data. spice-gtk
       # announced PNG to the guest, got 0 bytes back and never answered, and
       # every guest reader of image/png hung until the next clipboard change.
-      ./gtk3-quartz-clipboard-read-uti.patch
+      (prev.fetchpatch2 {
+        name = "quartz-clipboard-read-uti.patch";
+        url = "https://gitlab.gnome.org/johnrichardrinehart/gtk/-/commit/ab37ec7e52cd80c6bb7275dc57e13f6333783da1.patch";
+        hash = "sha256-CzKtI9QmYdvAQS57Dorc+zqEP62m8b1usjU/F2tEJxA=";
+      })
+      # https://gitlab.gnome.org/GNOME/gtk/-/merge_requests/10419
       # The macOS screenshot tool copies images as TIFF alone, and guest
       # consumers such as omp only take PNG. Offer image/png for a TIFF-only
       # pasteboard and convert on request. Applies on top of the patch above.
-      ./gtk3-quartz-clipboard-tiff-as-png.patch
+      (prev.fetchpatch2 {
+        name = "quartz-clipboard-tiff-as-png.patch";
+        url = "https://gitlab.gnome.org/johnrichardrinehart/gtk/-/commit/b304affecf9df7c637402d502a69506b60b9a884.patch";
+        hash = "sha256-fH0HT8qZx08uhPOs2N5qHZq4XNgS4sy7nb41OW544fQ=";
+      })
       # https://gitlab.gnome.org/GNOME/gtk/-/merge_requests/10415
       # A modifier key's press or release was judged by the flag both keys
       # of its left/right pair share, so releasing one Shift while holding
