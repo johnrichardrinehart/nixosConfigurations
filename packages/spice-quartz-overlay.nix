@@ -39,12 +39,16 @@ final: prev: {
     (prev.extend (_f: _p: { gtk3 = final.gtk3-quartz-patched; })).spice-gtk.overrideAttrs
       (old: {
         patches = (old.patches or [ ]) ++ [
+          # https://gitlab.freedesktop.org/spice/spice-gtk/-/merge_requests/154
           # spicy saves its settings on exit by renaming a new file over the
           # old one, which replaced Home Manager's read-only link with
           # whatever the running window held. Skip the save when the file
-          # is not writable. Not upstream yet: to be proposed to
-          # spice/spice-gtk as commit c98b7d6 from johnrichardrinehart's fork.
-          ./spice-gtk-spicy-read-only-settings.patch
+          # is not writable.
+          (prev.fetchpatch2 {
+            name = "spicy-read-only-settings.patch";
+            url = "https://gitlab.freedesktop.org/johnrichardrinehart/spice-gtk/-/commit/c98b7d6f47904f8001b76830d39a86eadf5ea698.patch";
+            hash = "sha256-Q7SueFKmJFLR8bpkweoiuI1yEqLi/7ijsxEkJk/smo8=";
+          })
         ];
       });
 }
