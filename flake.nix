@@ -136,24 +136,23 @@
 
           # The Mac host itself. Downstream flakes add their own modules with
           # `mkMbpHost { modules = [ ... ]; }` and get a matching provisioner
-          # from `mkProvisionMac`.
+          # from `mkProvisionMacPackage` (the derivation, to build) and
+          # `mkProvisionMac` (the app, to run).
           mbpHostModule = import ./darwin-configurations/mbp-host { inherit inputs; };
           mkMbpHost =
             {
               modules ? [ ],
             }:
             inputs.nix-darwin.lib.darwinSystem { modules = [ mbpHostModule ] ++ modules; };
-          mkProvisionMac =
+          mkProvisionMacPackage =
             darwinConfiguration:
-            let
-              provisioner = aarch64DarwinPkgs.callPackage ./packages/provision-mac.nix {
-                inherit darwinConfiguration;
-              };
-            in
-            {
-              type = "app";
-              program = "${provisioner}/bin/provision-mac";
+            aarch64DarwinPkgs.callPackage ./packages/provision-mac.nix {
+              inherit darwinConfiguration;
             };
+          mkProvisionMac = darwinConfiguration: {
+            type = "app";
+            program = "${mkProvisionMacPackage darwinConfiguration}/bin/provision-mac";
+          };
           mbpHost = mkMbpHost { };
         in
         {
@@ -191,10 +190,11 @@
           darwinModules.mbp-host = mbpHostModule;
           darwinConfigurations.mbp-host = mbpHost;
 
-          lib = { inherit mkMbpHost mkProvisionMac; };
+          lib = { inherit mkMbpHost mkProvisionMac mkProvisionMacPackage; };
 
           packages.aarch64-darwin = {
             mbp-apple-silicon-qemu-vm = mbpAppleSiliconQemuVm;
+            provision-mac = mkProvisionMacPackage mbpHost;
           };
           apps.aarch64-darwin = {
             mbp-apple-silicon-qemu-vm = {

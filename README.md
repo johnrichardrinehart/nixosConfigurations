@@ -75,7 +75,9 @@ the first. Once everything is done it only prints "no manual steps pending".
 
 Downstream flakes extend the host with
 `lib.mkMbpHost { modules = [ ... ]; }` and expose a matching provisioner with
-`lib.mkProvisionMac`. Per-user additions go under `home-manager.users.john`.
+`lib.mkProvisionMac` (the app) and `lib.mkProvisionMacPackage` (the same
+provisioner as a package, so `nix build .#provision-mac` builds it without
+running it). Per-user additions go under `home-manager.users.john`.
 
 ## Framework voice dictation
 
