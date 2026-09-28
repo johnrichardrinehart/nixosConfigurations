@@ -35,6 +35,7 @@ in
     inputs.home-manager.darwinModules.home-manager
     ./apps.nix
     ./manual-steps.nix
+    ./tmp-cleaner.nix
     ./vm-shares.nix
   ];
 
@@ -105,6 +106,10 @@ in
   # running system's - which a missing file always does, so every switch sat
   # through a daemon restart. An empty file is what Nix assumes anyway.
   environment.etc."nix/machines".text = "";
+
+  # Work kept in /tmp for a few days (long renders, scratch checkouts) must
+  # not vanish over a weekend; macOS alone deletes it after 3 untouched days.
+  dev.johnrinehart.mbp-host.tmpCleaner.enable = true;
 
   # /etc/zshrc puts the Nix and per-user profiles on PATH ahead of /usr/bin.
   programs.zsh.enable = true;
