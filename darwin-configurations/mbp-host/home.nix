@@ -231,20 +231,5 @@ in
         };
       };
     };
-
-    # Read by mbp-apple-silicon-qemu-vm: mount the guest's ~/code on the Mac.
-    home.file."guest-vm-fs-mappings.json".text = builtins.toJSON {
-      shares = [
-        {
-          host = "${config.home.homeDirectory}/code";
-          guest = "/home/john/code";
-          mode = "rw";
-          cache = "none";
-          msize = 512000;
-          remap = false;
-          transport = "nfs";
-        }
-      ];
-    };
   };
 }

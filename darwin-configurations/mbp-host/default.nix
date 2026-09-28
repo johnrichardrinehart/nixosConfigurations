@@ -35,6 +35,15 @@ in
     inputs.home-manager.darwinModules.home-manager
     ./apps.nix
     ./manual-steps.nix
+    ./vm-shares.nix
+  ];
+
+  # The guest's ~/code, mounted here: the data lives on the guest's disk.
+  dev.johnrinehart.mbp-host.vmShares = [
+    {
+      host = "/Users/${user}/code";
+      guest = "/home/${user}/code";
+    }
   ];
 
   dev.johnrinehart.provisionMac.summary.shotedit = "${shotedit.meta.mainProgram} (${shoteditBin})";

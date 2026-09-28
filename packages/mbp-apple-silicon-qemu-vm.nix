@@ -151,6 +151,11 @@ writeShellApplication {
       host   Where this Mac mounts the directory. Required. Absolute, no ~.
       guest  The guest directory to export. Required. Absolute, no whitespace.
       mode   "rw" (default) or "ro".
+      source "guest" (default): the data lives in the guest, as described
+             here. "host": the data lives on this Mac instead; host is a
+             directory this Mac's nfsd exports (provision-mac sets that up)
+             and guest is where the guest mounts it. Nothing is forwarded
+             for these: the guest reaches this Mac's loopback as 10.0.2.2.
       transport
              "nfs" (default), the only one there is.
 
@@ -837,6 +842,11 @@ writeShellApplication {
     }
 
     shares=()
+    # Shares whose data lives on this Mac: its own nfsd exports them (set up
+    # by provision-mac) and the guest mounts them. Nothing is forwarded for
+    # these; the guest reaches this Mac's loopback as 10.0.2.2.
+    host_shares=()
+    exported=""
     if (( installer )); then
       if [[ -e "$mappings_file" ]]; then
         echo "the installer exports nothing; $mappings_file applies once the installed system boots"
@@ -851,7 +861,8 @@ writeShellApplication {
                 (.guest // ""),
                 (.mode // "rw"),
                 (.transport // "nfs"),
-                ((.remap // false) | tostring)
+                ((.remap // false) | tostring),
+                (.source // "guest")
               ]
             | join("\u001f")
           ' "$mappings_file" 2>&1); then
@@ -863,7 +874,7 @@ writeShellApplication {
       # A unit separator rather than a tab: bash counts tab as IFS whitespace
       # and collapses runs of it, so an empty field would shift every other
       # one along.
-      while IFS=$'\x1f' read -r host guest mode transport remap; do
+      while IFS=$'\x1f' read -r host guest mode transport remap source; do
         # A blank line is what an empty table reads as, not a broken entry.
         if [[ -z "$host$guest" ]]; then
           continue
@@ -906,7 +917,7 @@ writeShellApplication {
           continue
         fi
         duplicate=0
-        for seen in ''${shares[@]+"''${shares[@]}"}; do
+        for seen in ''${shares[@]+"''${shares[@]}"} ''${host_shares[@]+"''${host_shares[@]}"}; do
           IFS=$'\t' read -r seen_host seen_guest _ <<<"$seen"
           if [[ "$seen_host" == "$host" || "$seen_guest" == "$guest" ]]; then
             duplicate=1
@@ -917,6 +928,29 @@ writeShellApplication {
           echo "$host: another mapping already uses $host or $guest; skipping" >&2
           continue
         fi
+        case "$source" in
+          guest) ;;
+          host)
+            if [[ ! -d "$host" ]]; then
+              echo "$host: shared from this Mac but missing; run provision-mac; skipping" >&2
+              continue
+            fi
+            if [[ -z "$exported" ]]; then
+              exported=$(/usr/bin/showmount -e 127.0.0.1 2>/dev/null | awk 'NR > 1 { print $1 }')
+            fi
+            if ! grep -qxF -- "$host" <<<"$exported"; then
+              echo "$host: this Mac's nfsd does not export it; run provision-mac; skipping" >&2
+              continue
+            fi
+            host_shares+=("$host"$'\t'"$guest"$'\t'"$mode")
+            echo "the guest mounts this Mac's $host at $guest ($mode)"
+            continue
+            ;;
+          *)
+            echo "$host: source must be guest or host, not $source; skipping" >&2
+            continue
+            ;;
+        esac
         if ! prepare_mount_point "$host" "$guest"; then
           continue
         fi
@@ -950,23 +984,6 @@ writeShellApplication {
         fi
       done
       netdev="$netdev,hostfwd=tcp:127.0.0.1:$nfs_port-:2049,hostfwd=tcp:127.0.0.1:$mountd_port-:$guest_mountd_port"
-
-      # Exported read-only and written before QEMU starts: the guest reads
-      # this to learn what to export, and has no business changing it. host is
-      # only there for the guest to name in its log.
-      printf '%s\n' "''${shares[@]}" | jq -R -s '
-        {
-          version: 2,
-          shares: (
-            split("\n")
-            | map(select(length > 0) | split("\t") | { host: .[0], guest: .[1], mode: .[2] })
-          ),
-        }' >"$manifest_dir/manifest.json"
-      qemu_args+=(
-        -fsdev "local,id=fsmanifest,path=$manifest_dir,security_model=none,readonly=on"
-        -device "virtio-9p-pci,id=fsdevmanifest,fsdev=fsmanifest,mount_tag=$manifest_tag"
-      )
-
       # Port and mountport name the forwards, so mount_nfs never asks a
       # portmapper, which is not forwarded. retrycnt=0 makes each attempt a
       # single connection with the quick 8s timeout, since the loop below is
@@ -1019,6 +1036,45 @@ writeShellApplication {
           sleep 2
         done
       }
+    fi
+
+    # The guest mounts this Mac's exports through slirp, which delivers its
+    # connections to this Mac's loopback. mountd's port comes from the running
+    # portmapper, so the guest never needs one of its own on this side.
+    host_mountd_port=""
+    if (( ''${#host_shares[@]} > 0 )); then
+      host_mountd_port=$(/usr/sbin/rpcinfo -p 127.0.0.1 2>/dev/null |
+        awk '$1 == 100005 && $2 == 3 && $3 == "tcp" { print $4; exit }')
+      if [[ -z "$host_mountd_port" ]]; then
+        echo "this Mac's mountd is not running; run provision-mac. The guest mounts none of this Mac's shares" >&2
+        host_shares=()
+      fi
+    fi
+
+    # Exported read-only and written before QEMU starts: the guest reads this
+    # to learn what to export (shares) and what of this Mac's to mount
+    # (host_shares), and has no business changing it. An older guest ignores
+    # host_shares. In shares, host is only there for the guest to name in its
+    # log.
+    if (( ''${#shares[@]} + ''${#host_shares[@]} > 0 )); then
+      rows() {
+        printf '%s\n' "$@" | jq -R -s '
+          split("\n") | map(select(length > 0) | split("\t") | { host: .[0], guest: .[1], mode: .[2] })'
+      }
+      jq -n \
+        --argjson shares "$(rows ''${shares[@]+"''${shares[@]}"})" \
+        --argjson host_shares "$(rows ''${host_shares[@]+"''${host_shares[@]}"})" \
+        --arg mountd "$host_mountd_port" '
+        {
+          version: 2,
+          shares: $shares,
+          host_shares: $host_shares,
+          host_nfs: { address: "10.0.2.2", nfs_port: 2049, mountd_port: ($mountd | tonumber? // null) },
+        }' >"$manifest_dir/manifest.json"
+      qemu_args+=(
+        -fsdev "local,id=fsmanifest,path=$manifest_dir,security_model=none,readonly=on"
+        -device "virtio-9p-pci,id=fsdevmanifest,fsdev=fsmanifest,mount_tag=$manifest_tag"
+      )
     fi
 
     qemu_args+=(

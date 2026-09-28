@@ -40,6 +40,149 @@ let
   # on 2049, which needs no pinning.
   mountdPort = 20048;
 
+  # Mounts the launcher's manifest and checks its version; leaves its path in
+  # $manifest, or exits 0 when this boot has none. Shared by the export and
+  # mount services, which may start in either order.
+  readManifest = ''
+    manifest="${manifestMount}/manifest.json"
+
+    if ! mountpoint -q "${manifestMount}"; then
+      mkdir -p "${manifestMount}"
+      # No device is not a failure: it is what every boot of a VM started
+      # with an empty mapping table looks like. A mount the other service
+      # made meanwhile is fine too.
+      if ! mount -t 9p -o trans=virtio,version=9p2000.L,cache=none,msize=512000,ro \
+        ${manifestTag} "${manifestMount}" 2>/dev/null && ! mountpoint -q "${manifestMount}"; then
+        echo "no ${manifestTag} 9p device; this boot shares nothing with the host"
+        exit 0
+      fi
+    fi
+
+    if [[ ! -e "$manifest" ]]; then
+      echo "${manifestTag} carries no manifest.json; sharing nothing" >&2
+      exit 0
+    fi
+
+    # Version 1 was the other direction: the guest mounting the Mac's
+    # directories. Exporting what an old launcher meant as mount points would
+    # hand the Mac empty directories, so refuse and say which side is stale.
+    version=$(jq -r '.version' "$manifest")
+    if [[ "$version" != 2 ]]; then
+      echo "the launcher wrote a version $version manifest; this guest needs version 2." >&2
+      echo "Update the launcher on the Mac." >&2
+      exit 1
+    fi
+  '';
+
+  # The Mac's own directories, exported by its nfsd (provision-mac sets that
+  # up) and listed in the manifest's host_shares. The Mac serves every request
+  # as its user, which is this guest's user too (same uid, hostUid), so the
+  # files read as this account's own on both sides.
+  #
+  # hard: the Mac runs this VM, so its nfsd is never gone while the guest is
+  # up, and a write that fails half way is worse than one that waits. nolock:
+  # the Mac's lockd would have to call back into the guest, which slirp does
+  # not route; locks stay local. actimeo=5 as on the Mac's side.
+  mountHostShares = pkgs.writeShellApplication {
+    name = "vm-mount-host-shares";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.jq
+      pkgs.nfs-utils
+      pkgs.util-linux
+    ];
+    text = ''
+      ${readManifest}
+
+      if [[ $(jq '.host_shares // [] | length' "$manifest") == 0 ]]; then
+        echo "the host shares none of its own directories"
+        exit 0
+      fi
+      address=$(jq -r '.host_nfs.address' "$manifest")
+      nfs_port=$(jq -r '.host_nfs.nfs_port' "$manifest")
+      mountd_port=$(jq -r '.host_nfs.mountd_port' "$manifest")
+      if [[ ! "$nfs_port" =~ ^[0-9]+$ || ! "$mountd_port" =~ ^[0-9]+$ ]]; then
+        echo "the manifest names no usable NFS ports for the host ($nfs_port, $mountd_port)" >&2
+        exit 1
+      fi
+      options="vers=3,proto=tcp,port=$nfs_port,mountport=$mountd_port,mountproto=tcp,nolock,hard,actimeo=5"
+
+      failed=0
+      while IFS=$'\x1f' read -r host guest mode; do
+        [[ -n "$guest" ]] || continue
+        if [[ "$guest" != /* || "$guest" =~ [[:space:]] || "$host" != /* ]]; then
+          echo "$host -> $guest: paths must be absolute, the guest's without whitespace; not mounting it" >&2
+          failed=1
+          continue
+        fi
+        case "$mode" in
+          ro | rw) ;;
+          *)
+            echo "$guest: mode must be ro or rw, not $mode; not mounting it" >&2
+            failed=1
+            continue
+            ;;
+        esac
+
+        if mountpoint -q "$guest"; then
+          if [[ $(findmnt -n -o SOURCE --mountpoint "$guest") == "$address:$host" ]]; then
+            echo "the host's $host is already mounted at $guest"
+            continue
+          fi
+          echo "$guest already has something else mounted on it; not mounting the host's $host" >&2
+          failed=1
+          continue
+        fi
+        if [[ ! -d "$guest" ]]; then
+          mkdir -p "$guest"
+          chown "${primaryUser}:" "$guest"
+        fi
+        # Mounting over files would hide them, and whatever used them would
+        # silently start using the host's copy instead.
+        if [[ -n $(find "$guest" -mindepth 1 -maxdepth 1 -print -quit) ]]; then
+          echo "$guest is not empty; refusing to hide it behind the host's $host" >&2
+          failed=1
+          continue
+        fi
+
+        opts=$options
+        [[ "$mode" == ro ]] && opts="$opts,ro"
+        mounted=0
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+          if mount.nfs "$address:$host" "$guest" -o "$opts"; then
+            mounted=1
+            break
+          fi
+          sleep 3
+        done
+        if (( mounted )); then
+          echo "mounted the host's $host at $guest ($mode)"
+        else
+          echo "could not mount the host's $host at $guest" >&2
+          failed=1
+        fi
+      done < <(jq -r '
+        .host_shares[]
+        | [.host, .guest, .mode]
+        | join("\u001f")
+      ' "$manifest")
+
+      exit "$failed"
+    '';
+  };
+
+  unmountHostShares = pkgs.writeShellApplication {
+    name = "vm-unmount-host-shares";
+    runtimeInputs = [ pkgs.util-linux ];
+    text = ''
+      findmnt -rn -t nfs -o TARGET,SOURCE | while read -r target source; do
+        if [[ "$source" == ${hostAddress}:* ]]; then
+          umount "$target" || umount -l "$target"
+        fi
+      done
+    '';
+  };
+
   exportShares = pkgs.writeShellApplication {
     name = "vm-export-shares";
     runtimeInputs = [
@@ -49,33 +192,7 @@ let
       pkgs.util-linux
     ];
     text = ''
-      manifest="${manifestMount}/manifest.json"
-
-      if ! mountpoint -q "${manifestMount}"; then
-        mkdir -p "${manifestMount}"
-        # No device is not a failure: it is what every boot of a VM started
-        # with an empty mapping table looks like.
-        if ! mount -t 9p -o trans=virtio,version=9p2000.L,cache=none,msize=512000,ro \
-          ${manifestTag} "${manifestMount}" 2>/dev/null; then
-          echo "no ${manifestTag} 9p device; this boot exports nothing to the host"
-          exit 0
-        fi
-      fi
-
-      if [[ ! -e "$manifest" ]]; then
-        echo "${manifestTag} carries no manifest.json; exporting nothing" >&2
-        exit 0
-      fi
-
-      # Version 1 was the other direction: the guest mounting the Mac's
-      # directories. Exporting what an old launcher meant as mount points would
-      # hand the Mac empty directories, so refuse and say which side is stale.
-      version=$(jq -r '.version' "$manifest")
-      if [[ "$version" != 2 ]]; then
-        echo "the launcher wrote a version $version manifest; this guest exports its" >&2
-        echo "own directories and needs version 2. Update the launcher on the Mac." >&2
-        exit 1
-      fi
+      ${readManifest}
 
       # all_squash with the guest account as the anonymous identity: whoever
       # the Mac says it is, the guest acts as its own user, so nothing written
@@ -198,6 +315,23 @@ in
       RemainAfterExit = true;
       ExecStart = lib.getExe exportShares;
       TimeoutStartSec = "60s";
+    };
+  };
+
+  systemd.services.vm-host-shares = {
+    description = "Mount the directories the host exports over NFS";
+    wantedBy = [ "multi-user.target" ];
+    wants = [ "network-online.target" ];
+    after = [
+      "local-fs.target"
+      "network-online.target"
+    ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = lib.getExe mountHostShares;
+      ExecStop = lib.getExe unmountHostShares;
+      TimeoutStartSec = "90s";
     };
   };
 }
