@@ -57,11 +57,11 @@ final: prev: {
         url = "https://gitlab.gnome.org/johnrichardrinehart/gtk/-/commit/b5baf6c53b67aadecf0b0bd5831d443dad37c5bc.patch";
         hash = "sha256-B4dxF62cQ4UlwXaa083HixE2Hrie2d0o1quEtXjufTY=";
       })
+      # https://gitlab.gnome.org/GNOME/gtk/-/merge_requests/10420
       # gtk_window_maximize() before the window is shown reaches the quartz
       # backend while the window is still unmapped, and it only zoomed mapped
       # windows, so spicy --maximized opened at the default size. Remember
-      # the request and zoom once shown. Branch quartz-initial-maximize on
-      # the fork; MR to follow once tested.
+      # the request and zoom once shown.
       (prev.fetchpatch2 {
         name = "quartz-initial-maximize.patch";
         url = "https://gitlab.gnome.org/johnrichardrinehart/gtk/-/commit/9fe1cd3659e172b2e99e7e7de7f0f6fe5fd832a8.patch";
