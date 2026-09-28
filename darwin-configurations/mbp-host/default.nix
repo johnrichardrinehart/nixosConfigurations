@@ -100,6 +100,12 @@ in
     "nix-command"
     "flakes"
   ];
+  # The omp wrapper (home.nix) runs llm-agents.nix's omp, which numtide
+  # prebuilds here; without it every new version builds locally.
+  nix.settings.extra-substituters = [ "https://cache.numtide.com" ];
+  nix.settings.extra-trusted-public-keys = [
+    "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
+  ];
 
   # nix-darwin only writes /etc/nix/machines when build machines are set, and
   # its activation reloads the daemon whenever that file differs from the
