@@ -27,13 +27,26 @@ final: prev: {
       # consumers such as omp only take PNG. Offer image/png for a TIFF-only
       # pasteboard and convert on request. Applies on top of the patch above.
       ./gtk3-quartz-clipboard-tiff-as-png.patch
+      # https://gitlab.gnome.org/GNOME/gtk/-/merge_requests/10415
       # A modifier key's press or release was judged by the flag both keys
       # of its left/right pair share, so releasing one Shift while holding
       # the other came out as another press: the guest kept that Shift held
       # until spicy lost and regained focus. Decide by the key's own
-      # device-dependent bit. Commit d6adfa9 on johnrichardrinehart's
-      # quartz-modifier-sides branch (gtk-3-24), not yet pushed or proposed.
-      ./gtk3-quartz-modifier-sides.patch
+      # device-dependent bit.
+      (prev.fetchpatch2 {
+        name = "quartz-modifier-sides.patch";
+        url = "https://gitlab.gnome.org/johnrichardrinehart/gtk/-/commit/d6adfa92514a7adbe8aa6f30cea6d0549516a307.patch";
+        hash = "sha256-D1l9cVJS1Z1HXsA+wtlWFZgl3DLdqzlneU/su1rdXeY=";
+      })
+      # gdk_keymap_get_caps_lock_state() always said FALSE, so spice-gtk's
+      # lock sync turned the guest's Caps Lock off on every focus-in. Read
+      # the real state. Branch quartz-caps-lock-state on the fork; MR to
+      # follow once tested.
+      (prev.fetchpatch2 {
+        name = "quartz-caps-lock-state.patch";
+        url = "https://gitlab.gnome.org/johnrichardrinehart/gtk/-/commit/b5baf6c53b67aadecf0b0bd5831d443dad37c5bc.patch";
+        hash = "sha256-B4dxF62cQ4UlwXaa083HixE2Hrie2d0o1quEtXjufTY=";
+      })
     ];
   });
 
@@ -64,6 +77,16 @@ final: prev: {
             name = "spicy-no-save-settings.patch";
             url = "https://gitlab.freedesktop.org/johnrichardrinehart/spice-gtk/-/commit/e3aa208a1fa3ae7628c8c5c91f58096c66ad9707.patch";
             hash = "sha256-p/AYC+eBHbaV+UWA3AmV/cGWjXndg2L5Y+kv75zqlvU=";
+          })
+          # macOS reports Caps Lock as a press when the lock turns on and a
+          # release when it turns off, so the guest turned it off only when
+          # the lock sync caught up, a second or two late. Send each change
+          # as a whole keystroke. Branch quartz-caps-lock-tap on the fork;
+          # MR to follow once tested.
+          (prev.fetchpatch2 {
+            name = "spice-widget-quartz-caps-lock-tap.patch";
+            url = "https://gitlab.freedesktop.org/johnrichardrinehart/spice-gtk/-/commit/5bb1f2e604f024318a67f54eed2b854e71f025c4.patch";
+            hash = "sha256-3eZQ7k6vYriswt8BGx+awyqIh69p7p+YZqMZ/PRBa0M=";
           })
         ];
       });
