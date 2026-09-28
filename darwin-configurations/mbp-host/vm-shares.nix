@@ -11,7 +11,9 @@
 # The table becomes ~/guest-vm-fs-mappings.json, which the launcher reads at
 # every start and forwards to the guest in its share manifest. For
 # source = "host" shares this module also runs the Mac's nfsd: /etc/exports
-# and the /etc/nfs.conf settings below, rewritten on every activation.
+# and the /etc/nfs.conf settings below, rewritten on every activation. The
+# guest reaches nfsd through a relay the launcher runs, which closes each
+# connection properly when the guest closes it; macOS nfsd does not.
 { config, lib, ... }:
 let
   inherit (lib) mkOption types;

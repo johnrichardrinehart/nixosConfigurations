@@ -159,8 +159,8 @@ writeShellApplication {
       source "guest" (default): the data lives in the guest, as described
              here. "host": the data lives on this Mac instead; host is a
              directory this Mac's nfsd exports (provision-mac sets that up)
-             and guest is where the guest mounts it. Nothing is forwarded
-             for these: the guest reaches this Mac's loopback as 10.0.2.2.
+             and guest is where the guest mounts it, through the relay
+             described below.
       transport
              "nfs" (default), the only one there is.
 
@@ -194,6 +194,15 @@ writeShellApplication {
     Mac should watch the mount: a watchman-backed git fsmonitor would report
     stale status. Let git scan it.
 
+    The guest reaches this Mac's loopback as 10.0.2.2 and mounts the "host"
+    shares from there: mountd directly, nfsd through a socat relay the
+    launcher runs on MBP_APPLE_VM_HOST_NFS_PORT for as long as the VM does.
+    macOS nfsd never closes its end of a connection the client has closed
+    first. The guest's NFS client closes a connection after five idle
+    minutes and opens no other until the old one is closed at both ends, so
+    without the relay every call on its hard mount would wait forever. The
+    relay closes both ends a second after the guest closes its own.
+
     Environment:
       MBP_APPLE_VM_OUTPUTS          virtio-gpu scanouts, or auto (default: 1)
       MBP_APPLE_VM_DISPLAY          spice, cocoa or none (default: spice)
@@ -208,6 +217,8 @@ writeShellApplication {
                                     (default: 2225)
       MBP_APPLE_VM_MOUNTD_PORT      Loopback port forwarded to the guest's mountd
                                     (default: 2226)
+      MBP_APPLE_VM_HOST_NFS_PORT    Loopback port of the relay to this Mac's nfsd
+                                    (default: 2227)
       MBP_APPLE_VM_NFS_TIMEOUT      Seconds to wait for the guest to export its
                                     shares before giving up on mounting them
                                     (default: 300)
@@ -586,6 +597,7 @@ writeShellApplication {
     client_pid=""
     qemu_pid=""
     mounter_pid=""
+    relay_pid=""
     launched=0
     cleaned=0
     cleanup() {
@@ -623,6 +635,12 @@ writeShellApplication {
       fi
       if [[ -n "$qemu_pid" ]]; then
         wait "$qemu_pid" 2>/dev/null
+      fi
+      # The relay only once QEMU is gone: the guest unmounts this Mac's shares
+      # through it on the way down.
+      if [[ -n "$relay_pid" ]]; then
+        kill "$relay_pid" 2>/dev/null
+        wait "$relay_pid" 2>/dev/null
       fi
       if [[ -n "$client_pid" ]]; then
         kill "$client_pid" 2>/dev/null
@@ -848,8 +866,8 @@ writeShellApplication {
 
     shares=()
     # Shares whose data lives on this Mac: its own nfsd exports them (set up
-    # by provision-mac) and the guest mounts them. Nothing is forwarded for
-    # these; the guest reaches this Mac's loopback as 10.0.2.2.
+    # by provision-mac) and the guest mounts them, from this Mac's loopback as
+    # 10.0.2.2: mountd directly, nfsd through the relay started below.
     host_shares=()
     exported=""
     if (( installer )); then
@@ -1056,6 +1074,42 @@ writeShellApplication {
       fi
     fi
 
+    # Runs a command in a session of its own, so that the terminal's Ctrl-C
+    # and hangup reach the launcher alone, which then stops it in its turn.
+    # shellcheck disable=SC2016 # perl's variables, not the shell's
+    in_own_session=(perl -MPOSIX -e 'POSIX::setsid() or die "setsid: $!\n"; exec { $ARGV[0] } @ARGV or die "exec: $!\n"')
+
+    # macOS nfsd stops serving a connection once the client shuts down its
+    # sending side, but never shuts down its own, so the socket stays half
+    # closed for good. The guest's NFS client does exactly that to a
+    # connection idle for five minutes and opens no other until the server
+    # has closed its end, after which every call on its hard mount waits
+    # forever. socat, relaying each connection separately, closes both ends
+    # one second (-t1) after the guest's side reaches EOF; linger=0 resets
+    # the connection to nfsd instead of leaving that one half closed too.
+    host_nfs_port=""
+    if (( ''${#host_shares[@]} > 0 )); then
+      host_nfs_port="''${MBP_APPLE_VM_HOST_NFS_PORT:-2227}"
+      if [[ ! "$host_nfs_port" =~ ^[1-9][0-9]*$ ]]; then
+        echo "MBP_APPLE_VM_HOST_NFS_PORT must be a positive integer, not $host_nfs_port" >&2
+        exit 1
+      fi
+      for port in "$ssh_port" "''${nfs_port:-}" "''${mountd_port:-}"; do
+        if [[ "$port" == "$host_nfs_port" ]]; then
+          echo "MBP_APPLE_VM_HOST_NFS_PORT ($host_nfs_port) must differ from the SSH, NFS and mountd ports" >&2
+          exit 1
+        fi
+      done
+      if (exec 3<>"/dev/tcp/127.0.0.1/$host_nfs_port") 2>/dev/null; then
+        echo "host port $host_nfs_port is already in use, so the guest cannot reach this Mac's nfsd" >&2
+        echo "free it, or set MBP_APPLE_VM_HOST_NFS_PORT to another port" >&2
+        exit 1
+      fi
+      "''${in_own_session[@]}" socat -t1 "TCP-LISTEN:$host_nfs_port,bind=127.0.0.1,reuseaddr,fork" \
+        TCP:127.0.0.1:2049,linger=0 </dev/null &
+      relay_pid=$!
+    fi
+
     # Exported read-only and written before QEMU starts: the guest reads this
     # to learn what to export (shares) and what of this Mac's to mount
     # (host_shares), and has no business changing it. An older guest ignores
@@ -1069,12 +1123,13 @@ writeShellApplication {
       jq -n \
         --argjson shares "$(rows ''${shares[@]+"''${shares[@]}"})" \
         --argjson host_shares "$(rows ''${host_shares[@]+"''${host_shares[@]}"})" \
-        --arg mountd "$host_mountd_port" '
+        --arg mountd "$host_mountd_port" \
+        --arg nfs "$host_nfs_port" '
         {
           version: 2,
           shares: $shares,
           host_shares: $host_shares,
-          host_nfs: { address: "10.0.2.2", nfs_port: 2049, mountd_port: ($mountd | tonumber? // null) },
+          host_nfs: { address: "10.0.2.2", nfs_port: ($nfs | tonumber? // null), mountd_port: ($mountd | tonumber? // null) },
         }' >"$manifest_dir/manifest.json"
       qemu_args+=(
         -fsdev "local,id=fsmanifest,path=$manifest_dir,security_model=none,readonly=on"
@@ -1243,8 +1298,7 @@ writeShellApplication {
       # shuts the guest down properly instead of QEMU dropping it on the spot.
       # bash runs traps while it sits in wait, so they fire promptly.
       launched=1
-      perl -MPOSIX -e 'POSIX::setsid() or die "setsid: $!\n"; exec { $ARGV[0] } @ARGV or die "exec: $!\n"' \
-        qemu-system-aarch64 "''${qemu_args[@]}" "$@" </dev/null &
+      "''${in_own_session[@]}" qemu-system-aarch64 "''${qemu_args[@]}" "$@" </dev/null &
       qemu_pid=$!
       status=0
       wait "$qemu_pid" || status=$?

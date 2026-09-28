@@ -80,9 +80,12 @@ let
   # files read as this account's own on both sides.
   #
   # hard: the Mac runs this VM, so its nfsd is never gone while the guest is
-  # up, and a write that fails half way is worse than one that waits. nolock:
-  # the Mac's lockd would have to call back into the guest, which slirp does
-  # not route; locks stay local. actimeo=5 as on the Mac's side.
+  # up, and a write that fails half way is worse than one that waits. The
+  # manifest's nfs_port is the launcher's relay to that nfsd, not nfsd
+  # itself: macOS nfsd leaves a connection this client closes half open, and
+  # a hard mount waits on it forever. nolock: the Mac's lockd would have to
+  # call back into the guest, which slirp does not route; locks stay local.
+  # actimeo=5 as on the Mac's side.
   mountHostShares = pkgs.writeShellApplication {
     name = "vm-mount-host-shares";
     runtimeInputs = [
