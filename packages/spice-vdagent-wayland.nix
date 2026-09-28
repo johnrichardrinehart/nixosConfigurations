@@ -32,13 +32,13 @@
 # implements that and wlr-output-management, so both halves land.
 stdenv.mkDerivation {
   pname = "spice-vdagent-wayland";
-  version = "0.23.0-unstable-2026-09-06";
+  version = "0.23.2";
 
   src = fetchFromGitHub {
     owner = "bjthompson805";
     repo = "spice-vdagent-wayland";
-    rev = "32ed60f27bde7e8acf76f71b0542c70b75a46a47";
-    hash = "sha256-95JTHgwRHE+DVVCrsKy3oYwDjf34+DU6WzdPTEr7RH4=";
+    tag = "v0.23.2";
+    hash = "sha256-vWRqKdeta0PtAHRjKcxDzl+ve6GzmxtoP9K2BibT9gI=";
   };
 
   postPatch = ''
@@ -70,8 +70,8 @@ stdenv.mkDerivation {
 
   # Each patch is the head commit of an open pull request against src's
   # repository. johnrichardrinehart/spice-vdagent-wayland's main merges all of
-  # them onto src.rev, so its tree is src with these patches applied; move both
-  # together.
+  # them onto src's tag, so its tree is src with these patches applied; move
+  # both together.
   #
   # niri answers org.gnome.Mutter.DisplayConfig for its ScreenCast and
   # ServiceChannel interfaces but reports no monitors through it, and the agent
