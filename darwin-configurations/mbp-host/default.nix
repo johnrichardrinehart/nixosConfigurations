@@ -193,6 +193,10 @@ in
     # Pre-existing hand-made dotfiles (~/.zshrc, ~/.gitconfig, ~/.ssh/config,
     # ...) are moved aside rather than refused on the first switch.
     backupFileExtension = "before-home-manager";
+    # Apps that rewrite a managed file (spicy, Karabiner) leave a real file
+    # to back up on every switch; replace the previous backup instead of
+    # stopping at mv's prompt (the old backup is read-only, a store copy).
+    overwriteBackup = true;
     extraSpecialArgs = { inherit inputs shotedit; };
     users.${user} = ./home.nix;
   };
