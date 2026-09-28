@@ -68,6 +68,11 @@ stdenv.mkDerivation {
     wayland
   ];
 
+  # Each patch is the head commit of an open pull request against src's
+  # repository. johnrichardrinehart/spice-vdagent-wayland's main merges all of
+  # them onto src.rev, so its tree is src with these patches applied; move both
+  # together.
+  #
   # niri answers org.gnome.Mutter.DisplayConfig for its ScreenCast and
   # ServiceChannel interfaces but reports no monitors through it, and the agent
   # treats that empty-but-successful reply as authoritative, never reaching the
@@ -97,6 +102,7 @@ stdenv.mkDerivation {
     # knew - a fatal protocol error. Every resize of the SPICE window changes
     # the guest's mode, so every resize killed the agent. Keep modes until
     # niri finishes them.
+    # https://github.com/bjthompson805/spice-vdagent-wayland/pull/3
     (fetchpatch2 {
       name = "output-mode-lifetime.patch";
       url = "https://github.com/johnrichardrinehart/spice-vdagent-wayland/commit/ea2046ff7951038987dd53ee53633795f798a2b4.patch?full_index=1";
@@ -108,6 +114,7 @@ stdenv.mkDerivation {
     # vdagentd then disagreed by one and each discarded the other's grabs:
     # clipboard dead both ways until enough guest copies closed the gap.
     # Forget the client when the channel closes.
+    # https://github.com/bjthompson805/spice-vdagent-wayland/pull/4
     (fetchpatch2 {
       name = "clipboard-grab-before-handshake.patch";
       url = "https://github.com/johnrichardrinehart/spice-vdagent-wayland/commit/29407beeee3002c9e3660c544cd909ff726a6094.patch?full_index=1";
@@ -119,6 +126,7 @@ stdenv.mkDerivation {
     # every format the guest lacks (RTF), and emptied whenever the agent went
     # away. Compare such an offer with what was served before announcing it.
     # Applies on top of the data-control patch above.
+    # https://github.com/bjthompson805/spice-vdagent-wayland/pull/5
     (fetchpatch2 {
       name = "clipboard-echo.patch";
       url = "https://github.com/johnrichardrinehart/spice-vdagent-wayland/commit/1f37cc3a4cab124d62fb9df7bb5ae415bad81fb0.patch?full_index=1";
