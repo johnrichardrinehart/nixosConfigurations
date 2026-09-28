@@ -103,6 +103,11 @@ in
             "git@github.com:"
             "ssh://git@github.com/"
           ];
+      # GitHub over SSH, never HTTPS, as on the NixOS machines (nixosModules
+      # common.nix). An HTTPS push would authenticate with whatever
+      # ~/.netrc or a credential helper holds, not the key picked by the
+      # remote's owner.
+      settings.url."git@github.com:".insteadOf = "https://github.com";
     };
 
     programs.ssh = {
