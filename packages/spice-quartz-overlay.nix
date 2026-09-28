@@ -1,6 +1,7 @@
 # The SPICE client's GTK carries four quartz fixes, so it has to be a distinct
-# build. Both live under their own attribute names here: gtk3 and spice-gtk
-# keep their usual nixpkgs meaning for everything else in the set.
+# build, and spicy one fix of its own. Both live under their own attribute
+# names here: gtk3 and spice-gtk keep their usual nixpkgs meaning for
+# everything else in the set.
 final: prev: {
   gtk3-quartz-patched = prev.gtk3.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [
@@ -34,5 +35,16 @@ final: prev: {
   # its pkg-config run resolves, so the result still links the unpatched
   # library. Building it in a scope where gtk3 itself is the patched one
   # leaves a single candidate. That scope is private to this attribute.
-  spice-gtk-quartz-patched = (prev.extend (_f: _p: { gtk3 = final.gtk3-quartz-patched; })).spice-gtk;
+  spice-gtk-quartz-patched =
+    (prev.extend (_f: _p: { gtk3 = final.gtk3-quartz-patched; })).spice-gtk.overrideAttrs
+      (old: {
+        patches = (old.patches or [ ]) ++ [
+          # spicy saves its settings on exit by renaming a new file over the
+          # old one, which replaced Home Manager's read-only link with
+          # whatever the running window held. Skip the save when the file
+          # is not writable. Not upstream yet: to be proposed to
+          # spice/spice-gtk as commit c98b7d6 from johnrichardrinehart's fork.
+          ./spice-gtk-spicy-read-only-settings.patch
+        ];
+      });
 }
