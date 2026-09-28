@@ -29,7 +29,8 @@ let
   # pixbuf loader its icons need nor the GSettings schemas GTK expects.
   # --no-save-settings (spice-gtk!155, carried by the overlay) keeps menu
   # changes to the session, so every window starts from the declared
-  # ~/.config/spicy/settings.
+  # ~/.config/spicy/settings. --maximized (spice-gtk!157) opens it filling
+  # the screen, and with resize-guest the guest follows.
   spicyClient =
     runCommand "spicy-client"
       {
@@ -38,7 +39,7 @@ let
       ''
         mkdir -p "$out/bin"
         makeWrapper ${spice-gtk-quartz-patched}/bin/spicy "$out/bin/spicy" \
-          --add-flags --no-save-settings \
+          --add-flags "--no-save-settings --maximized" \
           --set GDK_PIXBUF_MODULE_FILE ${librsvg.out}/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache \
           --prefix XDG_DATA_DIRS : ${gtk3-quartz-patched}/share \
           --prefix XDG_DATA_DIRS : ${gsettings-desktop-schemas}/share \

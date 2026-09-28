@@ -98,6 +98,16 @@ final: prev: {
             url = "https://gitlab.freedesktop.org/johnrichardrinehart/spice-gtk/-/commit/5bb1f2e604f024318a67f54eed2b854e71f025c4.patch";
             hash = "sha256-3eZQ7k6vYriswt8BGx+awyqIh69p7p+YZqMZ/PRBa0M=";
           })
+          # https://gitlab.freedesktop.org/spice/spice-gtk/-/merge_requests/157
+          # Adds --maximized, which the VM launcher passes so the viewer opens
+          # filling the screen instead of at the guest's last, small size. The
+          # MR targets master; this is its backport onto 0.42 and the patches
+          # above (branch spicy-maximized-0.42 on the fork).
+          (prev.fetchpatch2 {
+            name = "spicy-maximized.patch";
+            url = "https://gitlab.freedesktop.org/johnrichardrinehart/spice-gtk/-/commit/46c87707b23522144b96f13e7f24240bcce5967f.patch";
+            hash = "sha256-XRJOb3+17avdnwxeelVjSKeXqydeI3UuZ3jUb03qRxQ=";
+          })
         ];
       });
 }
