@@ -38,10 +38,10 @@ final: prev: {
         url = "https://gitlab.gnome.org/johnrichardrinehart/gtk/-/commit/d6adfa92514a7adbe8aa6f30cea6d0549516a307.patch";
         hash = "sha256-D1l9cVJS1Z1HXsA+wtlWFZgl3DLdqzlneU/su1rdXeY=";
       })
+      # https://gitlab.gnome.org/GNOME/gtk/-/merge_requests/10417
       # gdk_keymap_get_caps_lock_state() always said FALSE, so spice-gtk's
       # lock sync turned the guest's Caps Lock off on every focus-in. Read
-      # the real state. Branch quartz-caps-lock-state on the fork; MR to
-      # follow once tested.
+      # the real state.
       (prev.fetchpatch2 {
         name = "quartz-caps-lock-state.patch";
         url = "https://gitlab.gnome.org/johnrichardrinehart/gtk/-/commit/b5baf6c53b67aadecf0b0bd5831d443dad37c5bc.patch";
@@ -78,11 +78,11 @@ final: prev: {
             url = "https://gitlab.freedesktop.org/johnrichardrinehart/spice-gtk/-/commit/e3aa208a1fa3ae7628c8c5c91f58096c66ad9707.patch";
             hash = "sha256-p/AYC+eBHbaV+UWA3AmV/cGWjXndg2L5Y+kv75zqlvU=";
           })
+          # https://gitlab.freedesktop.org/spice/spice-gtk/-/merge_requests/156
           # macOS reports Caps Lock as a press when the lock turns on and a
           # release when it turns off, so the guest turned it off only when
           # the lock sync caught up, a second or two late. Send each change
-          # as a whole keystroke. Branch quartz-caps-lock-tap on the fork;
-          # MR to follow once tested.
+          # as a whole keystroke.
           (prev.fetchpatch2 {
             name = "spice-widget-quartz-caps-lock-tap.patch";
             url = "https://gitlab.freedesktop.org/johnrichardrinehart/spice-gtk/-/commit/5bb1f2e604f024318a67f54eed2b854e71f025c4.patch";
