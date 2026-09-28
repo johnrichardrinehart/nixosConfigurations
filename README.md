@@ -116,6 +116,12 @@ a host. The lighthouse's own outbound rules are empty as a second layer.
 Discovery, hole punching and relaying are Nebula control traffic and are not
 affected.
 
+`framework` (`framie`, `10.77.0.2/24`) contacts the lighthouse at `10.77.0.1`
+through `nebula-lighthouse.johnrinehart.dev:4242` from an ephemeral UDP port.
+It accepts ICMP and TCP 22 from peers, sends ICMP, TCP 22, DNS and HTTPS only
+to the lighthouse, answers punch notifications and uses the lighthouse, also
+a Nebula relay, when a direct tunnel fails.
+
 ### Peer registry, DNS and dashboard
 
 The lighthouse polls its Nebula debug console (localhost only, keys
@@ -145,3 +151,48 @@ After installing it, run
 To add a host: sign a certificate with `-groups peer` and an address in
 `10.77.0.0/24`, deploy it with the client module, and switch the host. It
 appears in the registry, DNS and dashboard as soon as it connects.
+
+### Credentials
+
+`secrets/nebula-ca.yaml` contains the encrypted CA signing key.
+`secrets/nebula-framework.yaml` contains the public CA certificate and
+`framie`'s signed certificate and private key. Both files use the Framework
+SSH host key as their only age recipient. The former administrator age
+identity cannot decrypt either file. sops-nix installs only the Framework
+node files under `/run/secrets` for Nebula. Never copy the CA signing key to
+the lighthouse or mount it in the Nebula service. The lighthouse's own
+certificate and key live in `/var/lib/nebula/` on the lighthouse only.
+
+Old Git revisions remain encrypted to their original recipient. Rekeying
+the current file does not revoke access to those revisions.
+
+Keep a secure recovery copy of the Framework SSH host key. Without it,
+neither current encrypted file can be decrypted. Before rotating that key,
+re-encrypt both files to the new age recipient while the old key is
+available. Verify decryption with the new key before retiring the old key.
+
+To issue a new host certificate, decrypt the CA key as root on Framework
+into a root-only tmpfs directory. Set `SOPS_AGE_KEY_CMD` to the absolute
+`ssh-to-age` path followed by
+`-private-key -i /etc/ssh/ssh_host_ed25519_key`. SOPS captures the native
+age identity that the command writes to standard output. Do not copy the
+SSH private key into the repository or a user directory. Use
+`nebula-cert sign` with
+`-ca-crt`, `-ca-key`, `-name`, `-networks <host-address>/24` and, for every
+host except the lighthouse, `-groups peer`.
+Verify the result with `nebula-cert verify`. Encrypt the new certificate
+and host key before updating the configuration. Remove the plaintext files
+from tmpfs. The CA signing key stays outside the runtime Nebula service.
+
+On `framie`, build `.#nixosConfigurations.framework.config.system.build.toplevel`.
+Switch with `sudo nixos-rebuild switch --flake .#framework` when root access
+is available. Verify `nebula@mycelium.service`, `nebula.mycelium`, and a
+connection to `10.77.0.1` before removing the imported DigitalOcean image.
+
+The lighthouse holds only the public CA certificate and its own signed
+certificate and private key under `/var/lib/nebula/`. Their modes are
+`0640 root:nebula-mycelium`. Never put a host's private key or the CA key
+in an unencrypted repository file. Before the CA expires, create a new CA
+and sign new certificates for both hosts. Update the two encrypted files,
+replace the lighthouse files through pinned SSH, and switch `framework`.
+Verify peer connectivity before retiring the old CA.

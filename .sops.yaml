@@ -1,8 +1,12 @@
 ---
 keys:
-  - &john age1wucy7a4hwxwsyuk6uj86ctxyuqatmxykk20t5dl3lf3g2fmtwpzslnv9s2
+  - &framework age1g4e49re2f34y0a2u2k69mumhy6cvv39ck6u4kmaahjtv0emh358s8fq67e
 creation_rules:
-  - path_regex: secrets/[^/]+\.(yaml|json|env|ini)$
+  - path_regex: secrets/nebula-ca\.yaml$
     key_groups:
       - age:
-          - *john
+          - *framework
+  - path_regex: secrets/nebula-framework\.yaml$
+    key_groups:
+      - age:
+          - *framework
