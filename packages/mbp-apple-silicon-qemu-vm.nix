@@ -1143,7 +1143,7 @@ writeShellApplication {
           # as "stop reconnecting" is how a running guest ends up on screen
           # nowhere. So reconnect for as long as QEMU is alive, and read two
           # closes in quick succession as someone who really means it.
-          # gtk3-quartz-poll-race.patch is what fixes the abort itself.
+          # GNOME/gtk!10388 (spice-quartz-overlay.nix) fixes the abort itself.
           closes=0
           while vm_pid >/dev/null; do
             if [[ ! -S "$spice_socket" ]]; then

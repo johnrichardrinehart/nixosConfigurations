@@ -40,7 +40,7 @@
 
   # virtio-gpu has no virglrenderer behind it on a macOS host, so Mesa only
   # offers llvmpipe and niri refuses software EGL unless asked. Pairs with
-  # 0004-tty-allow-opting-into-software-egl.patch in nixosModules.
+  # the software-EGL patches in niri-software-egl.nix (niri-wm/niri#4614).
   systemd.user.extraConfig = "DefaultEnvironment=NIRI_ALLOW_SOFTWARE_EGL=1";
 
   # niri's shared config ends with `include optional=true "/tmp/niri.kdl"`, so
@@ -49,7 +49,7 @@
   # debug: point niri's renderer at the primary node: virtio-gpu's render node
   # cannot back a software EGL renderer, and Smithay registers the GPU under
   # card0 instead. Pairs with
-  # 0005-tty-honour-configured-node-for-software-egl.patch in nixosModules.
+  # the software-EGL patches in niri-software-egl.nix (niri-wm/niri#4614).
   #
   # output: QEMU advertises the MacBook panel's native mode (3024x1898) to the
   # guest at scale 1, which leaves the bar, windows and text tiny. 1.5 gives a
