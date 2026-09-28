@@ -49,6 +49,15 @@ final: prev: {
             url = "https://gitlab.freedesktop.org/johnrichardrinehart/spice-gtk/-/commit/c98b7d6f47904f8001b76830d39a86eadf5ea698.patch";
             hash = "sha256-Q7SueFKmJFLR8bpkweoiuI1yEqLi/7ijsxEkJk/smo8=";
           })
+          # https://gitlab.freedesktop.org/spice/spice-gtk/-/merge_requests/155
+          # Adds --no-save-settings, which the VM launcher passes so every
+          # session starts from the declared settings. Built on the patch
+          # above: both change the same save-on-exit code.
+          (prev.fetchpatch2 {
+            name = "spicy-no-save-settings.patch";
+            url = "https://gitlab.freedesktop.org/johnrichardrinehart/spice-gtk/-/commit/e3aa208a1fa3ae7628c8c5c91f58096c66ad9707.patch";
+            hash = "sha256-p/AYC+eBHbaV+UWA3AmV/cGWjXndg2L5Y+kv75zqlvU=";
+          })
         ];
       });
 }

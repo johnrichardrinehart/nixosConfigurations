@@ -210,14 +210,22 @@ in
       '';
     };
 
-    # The apps rewrite these on GUI edits, replacing the link with a file;
-    # `force` lets the next switch put the declared version back.
+    # Karabiner rewrites its file on GUI edits, replacing the link with a
+    # file; `force` lets the next switch put the declared version back.
     xdg.configFile = {
+      # The VM-viewer rule matches the frontmost app's executable by regex:
+      # /nix/store/<32-char nix-base32 hash>-<package>-<version>/bin/<program>,
+      # where the package must be spice-gtk (or qemu, for its cocoa window)
+      # and the program spicy (or qemu-system-aarch64), also in the
+      # .<program>-wrapped form nixpkgs' GTK wrapper gives the real binary.
+      # Any hash and version match, so a rebuild or upgrade keeps it working.
       "karabiner/karabiner.json" = {
         source = ./karabiner.json;
         force = true;
       };
-      # spicy is the SPICE viewer the VM launcher opens.
+      # spicy is the SPICE viewer the VM launcher opens. The launcher runs it
+      # with --no-save-settings, and it leaves an unwritable settings file
+      # alone anyway, so this link stays put; `force` covers older builds.
       "spicy/settings" = {
         force = true;
         text = lib.generators.toINI { } {

@@ -27,6 +27,9 @@ let
   #
   # spice-gtk ships spicy unwrapped, so on its own it finds neither the SVG
   # pixbuf loader its icons need nor the GSettings schemas GTK expects.
+  # --no-save-settings (spice-gtk!155, carried by the overlay) keeps menu
+  # changes to the session, so every window starts from the declared
+  # ~/.config/spicy/settings.
   spicyClient =
     runCommand "spicy-client"
       {
@@ -35,6 +38,7 @@ let
       ''
         mkdir -p "$out/bin"
         makeWrapper ${spice-gtk-quartz-patched}/bin/spicy "$out/bin/spicy" \
+          --add-flags --no-save-settings \
           --set GDK_PIXBUF_MODULE_FILE ${librsvg.out}/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache \
           --prefix XDG_DATA_DIRS : ${gtk3-quartz-patched}/share \
           --prefix XDG_DATA_DIRS : ${gsettings-desktop-schemas}/share \
