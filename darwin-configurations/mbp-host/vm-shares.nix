@@ -133,9 +133,17 @@ in
           elif (( changed )); then
             /sbin/nfsd restart
           fi
-          if ! /sbin/nfsd checkexports; then
-            echo "error: nfsd rejected /etc/exports" >&2
-            exit 1
+          # checkexports also asks whether the nfsd daemon's sandbox could
+          # read each path, and says no for directories in a home folder. The
+          # kernel NFS server does the serving and is not bound by that, so
+          # those lines are only warnings; any other complaint is fatal.
+          if ! report=$(/sbin/nfsd checkexports 2>&1); then
+            if grep -v -e 'sandbox_check failed' -e "can't verify exports permissions" <<<"$report" | grep -q .; then
+              printf '%s\n' "$report" >&2
+              echo "error: nfsd rejected /etc/exports" >&2
+              exit 1
+            fi
+            printf 'warning (harmless): %s\n' "$report" >&2
           fi
         ''
     );
