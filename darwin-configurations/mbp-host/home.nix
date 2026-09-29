@@ -57,6 +57,10 @@ in
     # the Xcode license is accepted); the Nix ones come first on PATH.
     programs.vim = {
       enable = true;
+      # nixpkgs' default vim is built for X11 (GTK2), so "+ and "* went to an
+      # X clipboard nobody runs. vim-darwin uses the macOS pasteboard, which
+      # is also what spicy shares with the guest.
+      packageConfigurable = pkgs.vim-darwin;
       extraConfig = ''
         set encoding=utf-8
         set number
