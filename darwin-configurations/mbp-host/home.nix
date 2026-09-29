@@ -31,6 +31,7 @@ in
       pkgs.watch
       pkgs.wormhole-rs
       pkgs.ripgrep
+      pkgs.fd
       pkgs.ncdu
       # GNU timeout alone: all of coreutils would shadow macOS's date, ls, sed...
       (pkgs.runCommand "timeout" { } ''
