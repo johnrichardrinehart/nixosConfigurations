@@ -26,12 +26,22 @@ in
     ca = config.sops.secrets.nebula-ca.path;
     cert = config.sops.secrets.nebula-cert.path;
     key = config.sops.secrets.nebula-key.path;
-    # SSH to other peers, including Android phones running Termux's sshd on 8022.
+    # SSH to KeePass on 2222 and Android Termux peers on 8022.
     peerSshPorts = [
       "22"
+      "2222"
       "8022"
     ];
   };
+
+  # Reach VPN-only web services, including keepass.johnrinehart.dev.
+  services.nebula.networks.mycelium.firewall.outbound = [
+    {
+      port = "443";
+      proto = "tcp";
+      group = "peer";
+    }
+  ];
 
   # Refuse retired mycelium certificates; see the file for why each is listed.
   services.nebula.networks.mycelium.settings.pki.blocklist = import ../mycelium-blocklist.nix;

@@ -133,9 +133,10 @@ affected.
 
 `framework` (`framie`, `10.77.0.2/24`) contacts the lighthouse at `10.77.0.1`
 through `nebula-lighthouse.johnrinehart.dev:4242` from an ephemeral UDP port.
-It accepts ICMP and TCP 22 from peers, sends ICMP, TCP 22, DNS and HTTPS only
-to the lighthouse, answers punch notifications and uses the lighthouse, also
-a Nebula relay, when a direct tunnel fails.
+It accepts ICMP and TCP 22 from peers. It sends ICMP, HTTPS, and SSH on TCP
+22, 2222, and 8022 to peers.
+It sends DNS and HTTPS to the lighthouse. It answers punch notifications and
+uses the lighthouse, also a Nebula relay, when a direct tunnel fails.
 
 ### Peer registry, DNS and dashboard
 
