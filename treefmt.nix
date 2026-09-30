@@ -50,6 +50,11 @@
           "on"
           "off"
         ];
+        # SOPS ciphertext and MAC values are indivisible YAML scalars.
+        rules.line-length.ignore = [
+          "secrets/nebula-ca.yaml"
+          "secrets/nebula-framework.yaml"
+        ];
       };
     };
   };
