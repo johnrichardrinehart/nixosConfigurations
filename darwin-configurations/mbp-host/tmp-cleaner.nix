@@ -69,7 +69,8 @@ in
         StandardErrorPath = "/var/log/tmp-cleaner.log";
       };
 
-      dev.johnrinehart.provisionMac.summary.tmp-cleaner = "/tmp keeps untouched files ${toString cfg.days} days (${config.launchd.labelPrefix}.tmp-cleaner; ${appleJob} disabled)";
+      dev.johnrinehart.provisionMac.summary.tmp-cleaner =
+        "/tmp keeps untouched files ${toString cfg.days} days (${config.launchd.labelPrefix}.tmp-cleaner; ${appleJob} disabled)";
 
       # `disable` only takes effect when the job is next loaded, so the
       # loaded Apple job is also booted out; SIP may refuse that, in which
