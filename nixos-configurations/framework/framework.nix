@@ -31,6 +31,11 @@ in
     '';
   };
 
+  programs.ssh.extraConfig = lib.mkAfter ''
+    Host keepass.johnrinehart.dev
+      Port 2222
+  '';
+
   dev.johnrinehart.auto-suspend = {
     lowLevel = 30;
     criticalLevel = 20;
