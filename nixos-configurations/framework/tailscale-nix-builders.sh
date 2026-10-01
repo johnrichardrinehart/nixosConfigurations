@@ -174,7 +174,12 @@ probe_builder() {
   local ssh_user
   local target
   local -a ssh_users=()
+  # The probes pass every option explicitly, so read no ssh_config. The user
+  # unit's sandbox runs in a user namespace where root-owned files appear
+  # owned by nobody, and OpenSSH rejects the root-owned files that
+  # /etc/ssh/ssh_config includes.
   local -a ssh_options=(
+    -F none
     -o BatchMode=yes
     -o ConnectTimeout=4
     -o ConnectionAttempts=1
@@ -213,7 +218,7 @@ probe_builder() {
       return
     fi
 
-    nix_ssh_opts="-o BatchMode=yes -o ConnectTimeout=4 -o ConnectionAttempts=1 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$known_hosts_file -o GlobalKnownHostsFile=/dev/null -i $ssh_key"
+    nix_ssh_opts="-F none -o BatchMode=yes -o ConnectTimeout=4 -o ConnectionAttempts=1 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$known_hosts_file -o GlobalKnownHostsFile=/dev/null -i $ssh_key"
     if NIX_SSHOPTS=$nix_ssh_opts timeout 12s "$NIX_BIN" \
       --extra-experimental-features nix-command \
       store info --store "ssh-ng://$target?ssh-key=$ssh_key" >/dev/null 2>&1; then

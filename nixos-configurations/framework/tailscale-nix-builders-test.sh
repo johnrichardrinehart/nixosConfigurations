@@ -73,7 +73,7 @@ while (( $# > 0 )); do
       fi
       shift 2
       ;;
-    -i)
+    -F | -i)
       shift 2
       ;;
     -*)
