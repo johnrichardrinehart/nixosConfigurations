@@ -10,14 +10,14 @@
 }:
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "secretspec";
-  version = "0.21.0";
+  version = "0.21.1";
 
   src = fetchCrate {
     inherit (finalAttrs) pname version;
-    hash = "sha256-U7cSQbkOsmTfJynb1YizyZI2STpX7fz9N8JmJDHNr9w=";
+    hash = "sha256-VCvo+O3IHVUeZG6cxBmWy8/CEDZOwVr8IVcWxroUd00=";
   };
 
-  cargoHash = "sha256-rPtPWBq7MK/e9J4IHRpXlFtSwFom14QIgWXBEwJc/bI=";
+  cargoHash = "sha256-cA7HmOxCrfPiBKI8xxxpRBvGLUgyl4Ts1uhoCt0bBuk=";
 
   doCheck = false;
 

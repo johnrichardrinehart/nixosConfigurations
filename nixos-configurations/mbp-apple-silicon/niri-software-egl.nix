@@ -7,8 +7,8 @@ _: {
   # desktop that spice-vdagentd discards as coming from an old agent.
   #
   # base.nix already sets NIRI_ALLOW_SOFTWARE_EGL and pins render-drm-device,
-  # but the two upstream commits that taught niri to honour them are newer than
-  # the pinned release. Carry them until the package catches up.
+  # but niri honours them only with the two commits of niri-wm/niri#4614,
+  # an open pull request that no release includes. Carry them until one does.
   #
   # The hook is pkgs.niri rather than programs.niri.package because
   # greetd+niri.nix derives its compositor with
