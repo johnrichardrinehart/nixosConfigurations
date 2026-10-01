@@ -34,6 +34,8 @@ in
     ];
   };
 
+  security.pki.certificateFiles = [ ./mycelium-tls-ca.crt ];
+
   # Reach VPN-only web services, including keepass.johnrinehart.dev.
   services.nebula.networks.mycelium.firewall.outbound = [
     {

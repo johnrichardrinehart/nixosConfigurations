@@ -137,6 +137,10 @@ It accepts ICMP and TCP 22 from peers. It sends ICMP, HTTPS, and SSH on TCP
 It sends DNS and HTTPS to the lighthouse. It answers punch notifications and
 uses the lighthouse, also a Nebula relay, when a direct tunnel fails.
 
+The module also routes `mycelium.internal` to the lighthouse. Each peer is
+available as `<peer>.mycelium.internal`. Framework trusts the private TLS CA
+used by HTTPS services under this reserved namespace.
+
 ### Peer registry, DNS and dashboard
 
 The lighthouse polls its Nebula debug console (localhost only, keys
