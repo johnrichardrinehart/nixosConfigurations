@@ -10,15 +10,13 @@
 
     nixosModules.url = "github:johnrichardrinehart/nixosModules";
     nixosModules.inputs.nixpkgs.follows = "nixpkgs";
-    # Keep the source revision supported by the local terminal patch series.
-    nixosModules.inputs.monstar.url = "github:rockorager/monstar/6cf9c9f3b5f297cfdc2798484b324187d6ce9dc5";
 
     nixpkgs.url = "github:johnrichardrinehart/nixpkgs?ref=rock-5c-nixos-26.05";
 
     home-manager = {
       # release-26.05 plus nix-community/home-manager#10006 (overwriteBackup
-      # removes a read-only backup without prompting). Back to upstream's
-      # release-26.05 once that is merged and backported.
+      # removes a read-only backup without prompting). The PR is merged into
+      # master only. Return to upstream's release-26.05 once it is backported.
       url = "github:johnrichardrinehart/home-manager/release-26.05-overwrite-backup-rm-f";
       flake = true;
       inputs.nixpkgs.follows = "nixosModules/nixpkgs";
@@ -110,8 +108,8 @@
             overlays = [ (import ./packages/spice-quartz-overlay.nix) ];
           };
           bootstrapIso = aarch64DarwinPkgs.fetchurl {
-            url = "https://releases.nixos.org/nixos/unstable/nixos-26.11pre1073009.ef34387ddd75/nixos-minimal-26.11pre1073009.ef34387ddd75-aarch64-linux.iso";
-            hash = "sha256-0ObLuRcYGcsfF0SCV9i+NjZVImGvr1EFX8JH+4e5u7M=";
+            url = "https://releases.nixos.org/nixos/unstable/nixos-26.11pre1082427.b4fd65b198c5/nixos-minimal-26.11pre1082427.b4fd65b198c5-aarch64-linux.iso";
+            hash = "sha256-muUaIkjXmRRsz8xzHSeBEXd0+6xto1HMZT+xqh4RvVU=";
           };
           guestFlake =
             if inputs.self ? rev then
