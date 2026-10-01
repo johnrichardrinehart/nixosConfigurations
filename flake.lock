@@ -365,11 +365,11 @@
         "sops-nix": "sops-nix"
       },
       "locked": {
-        "lastModified": 1790818693,
-        "narHash": "sha256-mHbbSR/mi1vY4fiv1BAMb33W6hTVxeiau9GkKB7MDdE=",
+        "lastModified": 1790834427,
+        "narHash": "sha256-fYkg21FctdlGLefPVS/6cw4YmlVLKBBEZJfifIkQrMo=",
         "owner": "johnrichardrinehart",
         "repo": "nixosModules",
-        "rev": "5f8688962cc96a373d30cfbd614c9e2e39659020",
+        "rev": "702caf7b611aa96fcf49efb4b12c648bc38e2313",
         "type": "github"
       },
       "original": {
