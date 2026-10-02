@@ -120,6 +120,10 @@ in
     cert = "/var/lib/nebula/host.crt";
     key = "/var/lib/nebula/host.key";
     lighthouse.address = overlayAddress;
+    serverTLS = {
+      enable = true;
+      name = "lighthouse";
+    };
     # Mobile Nebula sends all queries here when it has no match domains.
     registry.upstreamResolvers = [
       "1.1.1.1"

@@ -165,14 +165,23 @@ Clients without split DNS send every lookup to `10.77.0.1`.
 The registry forwards queries outside the overlay to `1.1.1.1` and then `9.9.9.9`.
 The lighthouse and those resolvers see those queries.
 
-`https://lighthouse.mycelium.nebula.johnrinehart.dev/` (and `/api/peers` as
-JSON) shows peers inside the caller's certificate networks. The caller is
-identified by the overlay address its request arrives from. The certificate
-comes from ACME DNS-01 through Cloudflare once the token is installed as
-`CF_DNS_API_TOKEN=…` in `/var/lib/lighthouse-acme/cloudflare.env` (root,
-0400) on the lighthouse; until then a self-signed placeholder is served.
-After installing it, run
-`systemctl start acme-order-renew-lighthouse.mycelium.nebula.johnrinehart.dev`.
+`https://lighthouse.mycelium.internal/` and
+`https://lighthouse.mycelium.nebula.johnrinehart.dev/` show peers inside the caller's certificate networks.
+`/api/peers` returns the same view as JSON.
+The registry identifies the caller from its source overlay address.
+
+The private hostname uses `dev.johnrinehart.mycelium.serverTLS`.
+Install its Mycelium-CA certificate at `/var/lib/mycelium-tls/server.crt`.
+Install its separate server key at `/var/lib/mycelium-tls/server.key`, owned by root with group `nebula-registry` and mode `0440`.
+Give that group access to the parent directory.
+Use the reusable `mycelium-tls` signer documented in the nixosModules README.
+Keep the CA signing key on the deployment machine.
+Restart `nebula-registry.service` after certificate renewal.
+
+SNI selects the private certificate without replacing the public ACME identity.
+The public certificate uses ACME DNS-01 through Cloudflare.
+Install `CF_DNS_API_TOKEN=…` in `/var/lib/lighthouse-acme/cloudflare.env` with owner root and mode `0400`.
+Then run `systemctl start acme-order-renew-lighthouse.mycelium.nebula.johnrinehart.dev`.
 
 To add a host: sign a certificate with `-groups peer` and an address in
 `10.77.0.0/24`. Deploy its credentials through `dev.johnrinehart.mycelium` and switch the host.
