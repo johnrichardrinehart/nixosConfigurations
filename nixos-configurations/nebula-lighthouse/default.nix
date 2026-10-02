@@ -12,7 +12,7 @@ in
   imports = [
     (modulesPath + "/virtualisation/digital-ocean-config.nix")
     inputs.disko.nixosModules.disko
-    inputs.nixosModules.nixosModules.nebula-registry
+    inputs.nixosModules.nixosModules.mycelium
     ./disko.nix
   ];
 
@@ -112,46 +112,16 @@ in
     "/var/lib/nebula/host.key"
   ];
 
-  services.nebula.networks.mycelium = {
+  dev.johnrinehart.mycelium = {
+    enable = true;
+    role = "lighthouse";
+    trustCA.enable = false;
     ca = "/var/lib/nebula/ca.crt";
     cert = "/var/lib/nebula/host.crt";
     key = "/var/lib/nebula/host.key";
-    isLighthouse = true;
-    # Clients behind NAT that cannot punch through to each other tunnel
-    # through the lighthouse instead.
-    isRelay = true;
-    # Refuse retired mycelium certificates; see the file for why each is listed.
-    settings.pki.blocklist = import ../mycelium-blocklist.nix;
-    listen.port = 4242;
-    # Certificate identity is 10.77.0.1/24. Nebula assigns the tunnel IP from
-    # the externally supplied certificate, not from networking.interfaces.
-    # Only peers may open connections here; outbound stays empty so the
-    # lighthouse never initiates contact (peers refuse it inbound as well).
-    firewall.inbound = [
-      {
-        port = "any";
-        proto = "icmp";
-        group = "peer";
-      }
-      {
-        port = "22";
-        proto = "tcp";
-        group = "peer";
-      }
-    ];
-  };
-
-  # Peer history, liveness, DNS for mycelium.nebula.johnrinehart.dev and the
-  # HTTPS peer view at lighthouse.mycelium.nebula.johnrinehart.dev.
-  dev.johnrinehart.nebula.registry = {
-    enable = true;
-    networks.mycelium = {
-      address = overlayAddress;
-      consolePort = 2222;
-    };
-    # Mobile Nebula without match domains sends every lookup to the
-    # lighthouse; forward names outside the overlay so phones keep working.
-    upstreamResolvers = [
+    lighthouse.address = overlayAddress;
+    # Mobile Nebula sends all queries here when it has no match domains.
+    registry.upstreamResolvers = [
       "1.1.1.1"
       "9.9.9.9"
     ];

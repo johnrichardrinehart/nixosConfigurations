@@ -119,8 +119,8 @@ in the template.
 
 The Nebula network is named `mycelium` (tun device `nebula.mycelium`, unit
 `nebula@mycelium`). Its CA only signs addresses in `10.77.0.0/24`. Hosts use
-the nixosModules `dev.johnrinehart.nebula.client` module; the lighthouse
-runs `dev.johnrinehart.nebula.registry`.
+the nixosModules `dev.johnrinehart.mycelium` module. The lighthouse sets
+`role = "lighthouse"` to run the registry and relay.
 
 Certificates carry the identity: the name becomes the host's DNS label and
 the networks its overlay address. Every host except the lighthouse carries
@@ -137,9 +137,13 @@ It accepts ICMP and TCP 22 from peers. It sends ICMP, HTTPS, and SSH on TCP
 It sends DNS and HTTPS to the lighthouse. It answers punch notifications and
 uses the lighthouse, also a Nebula relay, when a direct tunnel fails.
 
-The module also routes `mycelium.internal` to the lighthouse. Each peer is
-available as `<peer>.mycelium.internal`. Framework trusts the private TLS CA
-used by HTTPS services under this reserved namespace.
+The module routes `mycelium.nebula.johnrinehart.dev` and `mycelium.internal`
+to the lighthouse. Each peer is available as `<peer>.mycelium.internal`.
+Enabled Mycelium hosts trust the module's public TLS CA by default.
+Set `dev.johnrinehart.mycelium.trustCA.enable = false` to disable that trust.
+Set `trustCA.bundle` to replace the public CA bundle.
+Framework uses the default bundle. The lighthouse explicitly disables CA trust.
+The module stores the public CA and revocations under `nixos-modules/nebula/mycelium/`.
 
 ### Peer registry, DNS and dashboard
 
@@ -155,11 +159,11 @@ DNS for `mycelium.nebula.johnrinehart.dev` comes from that history:
 `<certificate name>.mycelium.nebula.johnrinehart.dev`, for example
 `framework.mycelium.nebula.johnrinehart.dev` and
 `lighthouse.mycelium.nebula.johnrinehart.dev`. It is served on `10.77.0.1:53`,
-reachable only through Nebula. Hosts route only that zone to the lighthouse
-with systemd-resolved; other names resolve as before. Clients without split
-DNS, such as Mobile Nebula releases without match domains, send every lookup
-to `10.77.0.1`; the registry forwards names outside the overlay to `1.1.1.1`
-and then `9.9.9.9`, so the lighthouse and those resolvers see those lookups.
+reachable only through Nebula. Hosts route both private Mycelium zones to
+the lighthouse with systemd-resolved. Other names resolve as before.
+Clients without split DNS send every lookup to `10.77.0.1`.
+The registry forwards queries outside the overlay to `1.1.1.1` and then `9.9.9.9`.
+The lighthouse and those resolvers see those queries.
 
 `https://lighthouse.mycelium.nebula.johnrinehart.dev/` (and `/api/peers` as
 JSON) shows peers inside the caller's certificate networks. The caller is
@@ -171,8 +175,8 @@ After installing it, run
 `systemctl start acme-order-renew-lighthouse.mycelium.nebula.johnrinehart.dev`.
 
 To add a host: sign a certificate with `-groups peer` and an address in
-`10.77.0.0/24`, deploy it with the client module, and switch the host. It
-appears in the registry, DNS and dashboard as soon as it connects.
+`10.77.0.0/24`. Deploy its credentials through `dev.johnrinehart.mycelium` and switch the host.
+The host appears in the registry, DNS, and dashboard as soon as it connects.
 
 ### Credentials
 
