@@ -29,6 +29,12 @@
     "nix-command"
     "flakes"
   ];
+  # As on the Mac: the omp wrapper runs llm-agents.nix's omp, which numtide
+  # prebuilds here; without it every new version builds locally.
+  nix.settings.extra-substituters = [ "https://cache.numtide.com" ];
+  nix.settings.extra-trusted-public-keys = [
+    "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
+  ];
 
   # The Mac's trackpad reaches the guest through the SPICE client as a plain
   # scroll wheel, never as a touchpad, so monstar routes every tick through
