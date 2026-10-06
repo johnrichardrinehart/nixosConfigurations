@@ -54,6 +54,11 @@ in
     home.sessionVariables = {
       EDITOR = "vim";
       VISUAL = "vim";
+
+      # Render colour escapes in less (`jq -C … | less`). nix-darwin only puts
+      # -R in PAGER, which commands piping into less never see. NixOS hosts
+      # get LESS=-R from programs.less, on by default.
+      LESS = "-R";
     };
 
     # /usr/bin/git and /usr/bin/vim are Xcode shims (git refuses to run until
