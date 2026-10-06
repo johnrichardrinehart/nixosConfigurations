@@ -17,6 +17,7 @@
   perl,
   qemu,
   runCommand,
+  runtimeShell,
   serialProvisioner,
   shared-mime-info,
   socat,
@@ -70,27 +71,54 @@ let
         png2icns "$contents/Resources/spicy.icns" \
           ${qemu}/share/icons/hicolor/{16x16,32x32,48x48,128x128,256x256,512x512}/apps/qemu.png
 
-        cat >"$contents/Info.plist" <<EOF
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-          <key>CFBundleDevelopmentRegion</key><string>en</string>
-          <key>CFBundleExecutable</key><string>spicy</string>
-          <key>CFBundleIconFile</key><string>spicy</string>
-          <key>CFBundleIdentifier</key><string>dev.johnrinehart.spicy</string>
-          <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-          <key>CFBundleName</key><string>Spicy</string>
-          <key>CFBundlePackageType</key><string>APPL</string>
-          <key>CFBundleShortVersionString</key><string>${spice-gtk-quartz-patched.version}</string>
-          <key>CFBundleVersion</key><string>${spice-gtk-quartz-patched.version}</string>
-          <key>NSHighResolutionCapable</key><true/>
-        </dict>
-        </plist>
+        cat >"$contents/Info.plist" <<'EOF'
+        ${spicyInfoPlist "spicy"}
         EOF
       '';
+
+  spicyInfoPlist = executable: ''
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+      <key>CFBundleDevelopmentRegion</key><string>en</string>
+      <key>CFBundleExecutable</key><string>${executable}</string>
+      <key>CFBundleIconFile</key><string>spicy</string>
+      <key>CFBundleIdentifier</key><string>dev.johnrinehart.spicy</string>
+      <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+      <key>CFBundleName</key><string>Spicy</string>
+      <key>CFBundlePackageType</key><string>APPL</string>
+      <key>CFBundleShortVersionString</key><string>${spice-gtk-quartz-patched.version}</string>
+      <key>CFBundleVersion</key><string>${spice-gtk-quartz-patched.version}</string>
+      <key>NSHighResolutionCapable</key><true/>
+    </dict>
+    </plist>
+  '';
+
+  # The Spicy.app Home Manager installs: spicyClient's bundle, opened from the
+  # Dock or Finder through the launcher's --app rather than as a bare viewer
+  # with no VM to connect to. It names the launcher, which names spicyClient,
+  # so it is a bundle of its own rather than spicyClient itself. The entry
+  # point cannot be called Spicy: APFS is case-insensitive, and that is the
+  # spicy wrapper.
+  mkSpicyApp =
+    launcher:
+    runCommand "spicy-app" { } ''
+      mkdir -p "$out/Applications"
+      cp -R ${spicyClient}/Applications/Spicy.app "$out/Applications/Spicy.app"
+      chmod -R u+w "$out"
+      contents="$out/Applications/Spicy.app/Contents"
+      cat >"$contents/MacOS/open-vm" <<'EOF'
+      #!${runtimeShell}
+      exec ${lib.getExe launcher} --app
+      EOF
+      chmod +x "$contents/MacOS/open-vm"
+      cat >"$contents/Info.plist" <<'EOF'
+      ${spicyInfoPlist "open-vm"}
+      EOF
+    '';
 in
-writeShellApplication {
+(writeShellApplication {
   name = "mbp-apple-silicon-qemu-vm";
   runtimeInputs = [
     coreutils
@@ -111,6 +139,7 @@ writeShellApplication {
                                      [-- QEMU arguments...]
            mbp-apple-silicon-qemu-vm --bootstrap [--reset | --mount] [options as above]
            mbp-apple-silicon-qemu-vm --attach [--state-dir PATH]
+           mbp-apple-silicon-qemu-vm --app [--state-dir PATH]
            mbp-apple-silicon-qemu-vm --stop [--state-dir PATH]
 
     Runs the mbp-apple-silicon guest under QEMU with HVF acceleration. QEMU's
@@ -186,6 +215,11 @@ writeShellApplication {
     over rather than adding a second view of it, and whatever was connected is
     dropped the moment the new client arrives. The launcher stands aside for as
     long as an --attach client is up, and resumes its own when that one leaves.
+
+    --app is what Spicy.app runs when opened from the Dock or Finder: --attach
+    when the VM is running, and otherwise a Terminal window running this
+    launcher, so the VM starts with its output and Ctrl-C where they always
+    are. Its errors come up as alerts, there being no terminal to read.
 
     Directories on the guest's own disk are mounted on this Mac over NFS, one
     mount per entry in ~/guest-vm-fs-mappings.json. The data lives in the
@@ -284,6 +318,7 @@ writeShellApplication {
     reset=0
     stop=0
     attach=0
+    app=0
     client="''${MBP_APPLE_VM_SPICE_CLIENT:-1}"
     outputs="''${MBP_APPLE_VM_OUTPUTS:-1}"
     display="''${MBP_APPLE_VM_DISPLAY:-spice}"
@@ -350,6 +385,11 @@ writeShellApplication {
           ;;
         --attach)
           attach=1
+          shift
+          ;;
+        --app)
+          attach=1
+          app=1
           shift
           ;;
         --help|-h)
@@ -508,18 +548,27 @@ writeShellApplication {
     }
 
     if (( attach )); then
-      if ! vm_pid >/dev/null; then
-        echo "no VM is running against $state_dir" >&2
+      attach_fail() {
+        printf '%s\n' "$@" >&2
+        if (( app )); then
+          /usr/bin/osascript -e 'on run argv' \
+            -e 'display alert "Spicy" message (item 1 of argv) as critical' \
+            -e 'end run' "$*" >/dev/null
+        fi
         exit 1
+      }
+      if ! vm_pid >/dev/null; then
+        if (( app )); then
+          exec /usr/bin/open -a Terminal "$0"
+        fi
+        attach_fail "no VM is running against $state_dir"
       fi
       if [[ ! -S "$spice_socket" ]]; then
-        echo "the VM is running but $spice_socket is gone, and QEMU has no way" >&2
-        echo "to open another one; shut it down with --stop" >&2
-        exit 1
+        attach_fail "the VM is running but $spice_socket is gone, and QEMU has no way" \
+          "to open another one; shut it down with --stop"
       fi
       if holder=$(attach_pid); then
-        echo "another --attach client (pid $holder) already holds the display" >&2
-        exit 1
+        attach_fail "another --attach client (pid $holder) already holds the display"
       fi
       # Claim the display before connecting, not after: spice-server drops
       # whoever is attached the instant this client arrives, and the launcher's
@@ -1364,12 +1413,17 @@ writeShellApplication {
     exit "$status"
   '';
 
-  # Spicy.app, for Home Manager to install where a Dock tile can point at it.
-  passthru.spicy = spicyClient;
-
   meta = {
     description = "Run the Apple Silicon NixOS guest under QEMU with multi-head SPICE output";
     mainProgram = "mbp-apple-silicon-qemu-vm";
     platforms = [ "aarch64-darwin" ];
   };
-}
+}).overrideAttrs
+  (
+    finalAttrs: old: {
+      # Spicy.app, for Home Manager to install where a Dock tile can point at it.
+      passthru = old.passthru // {
+        spicy = mkSpicyApp finalAttrs.finalPackage;
+      };
+    }
+  )
