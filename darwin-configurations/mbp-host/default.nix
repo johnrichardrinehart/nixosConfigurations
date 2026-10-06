@@ -96,7 +96,7 @@ in
 
   # The official installer's daemon is taken over in place (same launchd
   # label); nix-darwin recognises its /etc/nix/nix.conf.
-  nix.settings.experimental-features = [
+  nix.settings.extra-experimental-features = [
     "nix-command"
     "flakes"
   ];
