@@ -171,5 +171,13 @@ final: prev: {
           hash = "sha256-ByF5OKo+5h8dmEN3jJsxXXbEP/i3ARsk7Z45WBWqzXs=";
         })
       ];
+
+      # The VM launcher's Spicy.app runs its own copy of .spicy-wrapped, from
+      # inside the bundle, so this output's wrapper never sees it. Record the
+      # wrapper's arguments for that copy to be wrapped with.
+      postFixup = (old.postFixup or "") + ''
+        mkdir -p "$out/nix-support"
+        declare -p gappsWrapperArgs >"$out/nix-support/gapps-wrapper-args"
+      '';
     });
 }

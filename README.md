@@ -27,6 +27,11 @@ Font, macOS defaults (Dock placement, input sources, scrolling, appearance), Kar
 and spicy config, the VM share table, `shotedit` (Cmd+Shift+4 straight into
 the screenshot editor), and the GUI apps Karabiner-Elements and KeePassXC.
 
+The VM launcher's SPICE viewer is `Spicy.app`, which Home Manager copies into
+`~/Applications/Home Manager Apps`; the launcher runs that copy when it matches
+its own build. As a bundled app it keeps its Dock and app-switcher entry across
+Dock restarts, and "Keep in Dock" pins a path that survives rebuilds.
+
 The VM share table (`dev.johnrinehart.mbp-host.vmShares`, in
 `darwin-configurations/mbp-host/vm-shares.nix`) lists directories shared with
 the guest over NFSv3, each exported by the side its data lives on:

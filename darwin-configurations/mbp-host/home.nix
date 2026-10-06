@@ -41,6 +41,9 @@ in
       pkgs.repo-manager
       (pkgs.callPackage ../../packages/secretspec/package.nix { })
       inputs.self.packages.aarch64-darwin.mbp-apple-silicon-qemu-vm
+      # Its viewer, Spicy.app, which Home Manager copies into
+      # ~/Applications/Home Manager Apps; the launcher runs that copy.
+      inputs.self.packages.aarch64-darwin.mbp-apple-silicon-qemu-vm.spicy
       # The same floating wrapper the NixOS machines install
       # (nixosModules agentTools.omp): it `nix run`s llm-agents.nix's omp,
       # rechecked hourly, with the context-mode extension.
@@ -266,12 +269,12 @@ in
     # Karabiner rewrites its file on GUI edits, replacing the link with a
     # file; `force` lets the next switch put the declared version back.
     xdg.configFile = {
-      # The VM-viewer rule matches the frontmost app's executable by regex:
-      # /nix/store/<32-char nix-base32 hash>-<package>-<version>/bin/<program>,
-      # where the package must be spice-gtk (or qemu, for its cocoa window)
-      # and the program spicy (or qemu-system-aarch64), also in the
-      # .<program>-wrapped form nixpkgs' GTK wrapper gives the real binary.
-      # Any hash and version match, so a rebuild or upgrade keeps it working.
+      # The VM-viewer rule matches the frontmost app: Spicy.app by bundle
+      # identifier, and QEMU's cocoa window by its executable, by regex:
+      # /nix/store/<32-char nix-base32 hash>-qemu-<version>/bin/
+      # qemu-system-aarch64, also in the .qemu-system-aarch64-wrapped form
+      # nixpkgs' wrapper gives the real binary. Any hash and version match,
+      # so a rebuild or upgrade keeps it working.
       "karabiner/karabiner.json" = {
         source = ./karabiner.json;
         force = true;

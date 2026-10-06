@@ -2,6 +2,7 @@
   adwaita-icon-theme,
   bootstrapIso,
   coreutils,
+  diffutils,
   expect,
   gsettings-desktop-schemas,
   gtk3-quartz-patched,
@@ -9,6 +10,7 @@
   hicolor-icon-theme,
   installerBoot,
   jq,
+  libicns,
   lib,
   librsvg,
   makeWrapper,
@@ -25,20 +27,35 @@ let
   # spice-gtk-quartz-patched and gtk3-quartz-patched come from
   # packages/spice-quartz-overlay.nix; stock gtk3 and spice-gtk are left alone.
   #
-  # spice-gtk ships spicy unwrapped, so on its own it finds neither the SVG
-  # pixbuf loader its icons need nor the GSettings schemas GTK expects.
-  # --no-save-settings (spice-gtk!155, carried by the overlay) keeps menu
-  # changes to the session, so every window starts from the declared
-  # ~/.config/spicy/settings. --maximized (spice-gtk!157) opens it filling
-  # the screen, and with resize-guest the guest follows.
+  # spice-gtk's own wrapper supplies GTK's environment (gsettings schemas,
+  # GStreamer plugins); on top of that spicy needs the SVG pixbuf loader its
+  # icons use and the icon themes. --no-save-settings (spice-gtk!155, carried
+  # by the overlay) keeps menu changes to the session, so every window starts
+  # from the declared ~/.config/spicy/settings. --maximized (spice-gtk!157)
+  # opens it filling the screen, and with resize-guest the guest follows.
+  #
+  # spicy runs as Spicy.app. A bare executable has no bundle, and the Dock
+  # keeps no tile for one across its own restarts, so a running viewer would
+  # vanish from the Dock and the app switcher. macOS finds the bundle from
+  # the path of the running executable, so the real binary is copied into
+  # Contents/MacOS rather than exec'd from spice-gtk's store path. The bundle
+  # is also copied out of the store (Home Manager installs it), so its
+  # wrapper execs the binary beside itself, not the store copy.
   spicyClient =
     runCommand "spicy-client"
       {
-        nativeBuildInputs = [ makeWrapper ];
+        nativeBuildInputs = [
+          libicns
+          makeWrapper
+        ];
       }
       ''
-        mkdir -p "$out/bin"
-        makeWrapper ${spice-gtk-quartz-patched}/bin/spicy "$out/bin/spicy" \
+        contents="$out/Applications/Spicy.app/Contents"
+        mkdir -p "$contents/MacOS" "$contents/Resources"
+        cp ${spice-gtk-quartz-patched}/bin/.spicy-wrapped "$contents/MacOS/.spicy-wrapped"
+        source ${spice-gtk-quartz-patched}/nix-support/gapps-wrapper-args
+        makeWrapper "$contents/MacOS/.spicy-wrapped" "$contents/MacOS/spicy" \
+          "''${gappsWrapperArgs[@]}" \
           --add-flags "--no-save-settings --maximized" \
           --set GDK_PIXBUF_MODULE_FILE ${librsvg.out}/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache \
           --prefix XDG_DATA_DIRS : ${gtk3-quartz-patched}/share \
@@ -46,18 +63,43 @@ let
           --prefix XDG_DATA_DIRS : ${adwaita-icon-theme}/share \
           --prefix XDG_DATA_DIRS : ${hicolor-icon-theme}/share \
           --prefix XDG_DATA_DIRS : ${shared-mime-info}/share
+        substituteInPlace "$contents/MacOS/spicy" \
+          --replace-fail "\"$contents/MacOS/.spicy-wrapped\"" '"''${BASH_SOURCE[0]%/*}/.spicy-wrapped"'
+
+        # spice-gtk ships no icon; the window is the QEMU guest's screen.
+        png2icns "$contents/Resources/spicy.icns" \
+          ${qemu}/share/icons/hicolor/{16x16,32x32,48x48,128x128,256x256,512x512}/apps/qemu.png
+
+        cat >"$contents/Info.plist" <<EOF
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+          <key>CFBundleDevelopmentRegion</key><string>en</string>
+          <key>CFBundleExecutable</key><string>spicy</string>
+          <key>CFBundleIconFile</key><string>spicy</string>
+          <key>CFBundleIdentifier</key><string>dev.johnrinehart.spicy</string>
+          <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+          <key>CFBundleName</key><string>Spicy</string>
+          <key>CFBundlePackageType</key><string>APPL</string>
+          <key>CFBundleShortVersionString</key><string>${spice-gtk-quartz-patched.version}</string>
+          <key>CFBundleVersion</key><string>${spice-gtk-quartz-patched.version}</string>
+          <key>NSHighResolutionCapable</key><true/>
+        </dict>
+        </plist>
+        EOF
       '';
 in
 writeShellApplication {
   name = "mbp-apple-silicon-qemu-vm";
   runtimeInputs = [
     coreutils
+    diffutils
     expect
     jq
     qemu
     perl
     socat
-    spicyClient
   ];
 
   text = ''
@@ -348,6 +390,19 @@ writeShellApplication {
       fi
     done
 
+    # The viewer is Spicy.app. Home Manager installs a copy of it, which is
+    # what a Dock tile kept for it points at, and the Dock places a running
+    # app by the bundle it runs from: run that copy when it is this build's,
+    # and this build's own from the store otherwise (under `nix run`, or with
+    # another generation installed).
+    spicy_app=${spicyClient}/Applications/Spicy.app
+    installed_spicy_app="$HOME/Applications/Home Manager Apps/Spicy.app"
+    if cmp -s "$installed_spicy_app/Contents/MacOS/spicy" "$spicy_app/Contents/MacOS/spicy" &&
+      cmp -s "$installed_spicy_app/Contents/MacOS/.spicy-wrapped" "$spicy_app/Contents/MacOS/.spicy-wrapped"; then
+      spicy_app=$installed_spicy_app
+    fi
+    spicy="$spicy_app/Contents/MacOS/spicy"
+
     # QEMU writes the pidfile itself and unlinks it on the way out, so a pid in
     # there that is still alive is the one honest answer to "is a VM running
     # against this state directory". Nothing else in here is trustworthy: the
@@ -484,7 +539,7 @@ writeShellApplication {
       # otherwise leave a killed --attach holding the display and the pidfile
       # until its client happened to exit on its own.
       attach_status=0
-      spicy --uri="spice+unix://$spice_socket" &
+      "$spicy" --uri="spice+unix://$spice_socket" &
       attach_client=$!
       wait "$attach_client" || attach_status=$?
       attach_client=""
@@ -1172,7 +1227,7 @@ writeShellApplication {
 
     if [[ "$display" == spice ]]; then
       echo "SPICE socket: $spice_socket"
-      echo "Connect with: spicy --uri=spice+unix://$spice_socket"
+      printf 'Connect with: %q %q\n' "$spicy" "--uri=spice+unix://$spice_socket"
       if (( client )); then
         (
           # Both the socket and the pidfile appear during QEMU's startup, and
@@ -1215,7 +1270,7 @@ writeShellApplication {
             fi
             started=$SECONDS
             status=0
-            spicy --uri="spice+unix://$spice_socket" || status=$?
+            "$spicy" --uri="spice+unix://$spice_socket" || status=$?
             vm_pid >/dev/null || break
             if attach_pid >/dev/null; then
               # An --attach arrived and took the display. That is a handover,
@@ -1308,6 +1363,9 @@ writeShellApplication {
     trap - EXIT INT TERM HUP
     exit "$status"
   '';
+
+  # Spicy.app, for Home Manager to install where a Dock tile can point at it.
+  passthru.spicy = spicyClient;
 
   meta = {
     description = "Run the Apple Silicon NixOS guest under QEMU with multi-head SPICE output";

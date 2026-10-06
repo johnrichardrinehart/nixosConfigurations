@@ -9,8 +9,8 @@
               {
                 "conditions": [
                   {
+                    "bundle_identifiers": ["^dev\\.johnrinehart\\.spicy$"],
                     "file_paths": [
-                      "^/nix/store/[0-9a-df-np-sv-z]{32}-spice-gtk-[0-9][^/]*/bin/(\\.spicy-wrapped|spicy)$",
                       "^/nix/store/[0-9a-df-np-sv-z]{32}-qemu-[0-9][^/]*/bin/(\\.qemu-system-aarch64-wrapped|qemu-system-aarch64)$"
                     ],
                     "type": "frontmost_application_if"
