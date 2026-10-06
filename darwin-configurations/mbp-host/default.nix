@@ -106,6 +106,9 @@ in
   nix.settings.extra-trusted-public-keys = [
     "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
   ];
+  # As in the guest: outputs reachable from a live .drv stay in the store, so
+  # garbage collection does not force the next build to redo kept work.
+  nix.settings.keep-outputs = true;
 
   # nix-darwin only writes /etc/nix/machines when build machines are set, and
   # its activation reloads the daemon whenever that file differs from the
