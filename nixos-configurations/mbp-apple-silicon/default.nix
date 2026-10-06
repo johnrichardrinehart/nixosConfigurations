@@ -1,4 +1,4 @@
-{ lib, ... }:
+{ lib, pkgs, ... }:
 {
   imports = [
     ./base.nix
@@ -14,6 +14,9 @@
     alsa.enable = lib.mkDefault true;
     pulse.enable = lib.mkDefault true;
   };
+
+  # Track the newest stable kernel nixpkgs packages instead of its LTS default.
+  boot.kernelPackages = pkgs.linuxPackages_latest;
 
   # Outputs reachable from a live .drv stay in the store, so collecting garbage
   # or dropping old generations does not force the next rebuild to redo the
