@@ -30,6 +30,11 @@
     # remains /dev/console and keeps the serial getty provisioning runs over.
     kernelParams = [
       "console=tty0"
+      # GTK GL apps (satty) hand llvmpipe frames to niri as udmabufs, capped
+      # at 64 MiB by default. A fullscreen canvas on the 5120-wide output at
+      # integer scale 2 needs ~100 MiB; above the cap UDMABUF_CREATE fails
+      # with EINVAL and the window draws white.
+      "udmabuf.size_limit_mb=256"
       "console=hvc0"
     ];
     loader = {
