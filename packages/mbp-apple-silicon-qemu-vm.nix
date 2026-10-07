@@ -857,6 +857,11 @@ in
       # --bootstrap: redirected devices need somewhere to attach, and the
       # installer's ISO drive hangs off this same xhci.
       -device "qemu-xhci,id=xhci"
+      # QEMU's bundled EDK2 (edk2-stable202408) has no virtio-input driver, so
+      # the firmware and systemd-boot read keys through UsbKbDxe instead. QEMU
+      # routes keys to usb-kbd until the guest's virtio driver starts the
+      # keyboard above, which then takes over (ui/input.c handler order).
+      -device "usb-kbd,bus=xhci.0"
       -drive "if=none,id=root,format=raw,file=$disk"
       -device "virtio-blk-pci,drive=root,bootindex=0"
       -serial none
