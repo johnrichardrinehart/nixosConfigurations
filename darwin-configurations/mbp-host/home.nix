@@ -269,6 +269,16 @@ in
         run /usr/bin/defaults import com.apple.Terminal "$plist"
         rm -rf "$tmp"
       '';
+
+      # The 32" Dell U3225QE (vendor 0x10ac, model 0x4376; native 3840x2160)
+      # looks like 2560x1440 at scale 2: text 1.5 times its native size. The
+      # mode is saved permanently, and WindowServer restores it each time the
+      # monitor is attached. When it is not connected, this does nothing.
+      # `display-mode list` (packages/display-mode) prints them for others.
+      displayModes = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        run ${lib.getExe (pkgs.callPackage ../../packages/display-mode/package.nix { })} \
+          set 4268 17270 2560 1440 2
+      '';
     };
 
     # Karabiner rewrites its file on GUI edits, replacing the link with a
