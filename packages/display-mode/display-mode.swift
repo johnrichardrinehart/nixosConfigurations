@@ -4,7 +4,9 @@
 //
 //   display-mode list
 //     Connected displays (vendor, model, current mode) and the sizes each
-//     offers, so a display can be added to the configuration.
+//     offers, so a display can be added to the configuration. Each size also
+//     shows its size on screen: panel pixels per point. A scale 2 mode larger
+//     than half the panel is rendered at 2x and shrunk, e.g. 1.5x.
 //   display-mode set <vendor> <model> <width> <height> <scale>
 //     Switch the display with that vendor and model number to the mode that
 //     "looks like" width x height points with a backing scale of 1 or 2 (2 is
@@ -35,6 +37,18 @@ func describe(_ mode: CGDisplayMode) -> String {
     "\(mode.width)x\(mode.height) scale \(scale(mode)) (\(mode.pixelWidth)x\(mode.pixelHeight)) \(Int(mode.refreshRate.rounded())) Hz"
 }
 
+// The panel's own width in pixels: the widest mode at scale 1.
+func panelWidth(_ modes: [CGDisplayMode]) -> Int {
+    modes.filter { scale($0) == 1 }.map(\.pixelWidth).max() ?? 0
+}
+
+func onScreen(_ mode: CGDisplayMode, panel: Int) -> String {
+    var factor = String(format: "%.2f", Double(panel) / Double(mode.width))
+    while factor.hasSuffix("0") { factor.removeLast() }
+    if factor.hasSuffix(".") { factor.removeLast() }
+    return "\(factor)x on screen"
+}
+
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("display-mode: \(message)\n".utf8))
     exit(1)
@@ -44,13 +58,15 @@ let args = Array(CommandLine.arguments.dropFirst())
 switch args.first {
 case "list":
     for display in onlineDisplays() {
-        let current = CGDisplayCopyDisplayMode(display).map(describe) ?? "unknown"
+        let modes = usableModes(display)
+        let panel = panelWidth(modes)
+        let current = CGDisplayCopyDisplayMode(display).map { "\(describe($0)), \(onScreen($0, panel: panel))" } ?? "unknown"
         print("vendor \(CGDisplayVendorNumber(display)) model \(CGDisplayModelNumber(display))"
             + (CGDisplayIsBuiltin(display) != 0 ? " (built-in)" : "") + ": \(current)")
         var seen = Set<String>()
-        for mode in usableModes(display) {
+        for mode in modes {
             let size = "\(mode.width) \(mode.height) \(scale(mode))"
-            if seen.insert(size).inserted { print("  \(size)") }
+            if seen.insert(size).inserted { print("  \(size)  (\(onScreen(mode, panel: panel)))") }
         }
     }
 

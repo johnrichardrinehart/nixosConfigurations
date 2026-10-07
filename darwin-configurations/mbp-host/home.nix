@@ -9,6 +9,8 @@
 }:
 let
   cfg = config.dev.johnrinehart.mbp-host;
+  # One build for PATH and the activation step below.
+  displayMode = pkgs.callPackage ../../packages/display-mode/package.nix { };
 in
 {
   options.dev.johnrinehart.mbp-host.github.personalSshKey = lib.mkOption {
@@ -26,6 +28,7 @@ in
 
     home.packages = [
       pkgs.htop
+      displayMode
       pkgs.tmux
       pkgs.tree
       pkgs.watch
@@ -274,9 +277,9 @@ in
       # looks like 2560x1440 at scale 2: text 1.5 times its native size. The
       # mode is saved permanently, and WindowServer restores it each time the
       # monitor is attached. When it is not connected, this does nothing.
-      # `display-mode list` (packages/display-mode) prints them for others.
+      # `display-mode list` prints them for another display.
       displayModes = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        run ${lib.getExe (pkgs.callPackage ../../packages/display-mode/package.nix { })} \
+        run ${lib.getExe displayMode} \
           set 4268 17270 2560 1440 2
       '';
     };
