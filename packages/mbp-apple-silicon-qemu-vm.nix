@@ -258,7 +258,9 @@ in
 
     The mounts are soft and interruptible with deadtimeout=60: when the guest
     stops answering, calls fail rather than hang, and macOS drops the mount
-    after a minute. The launcher unmounts them before the guest goes down - on
+    after a minute. While QEMU runs, the launcher mounts a dropped share again
+    once the guest exports it, for example after a guest reboot. The launcher
+    unmounts them before the guest goes down - on
     exit, and first thing under --stop - so what this Mac has buffered reaches
     the guest while it can still take it. Byte-range locks stay on this Mac
     (locallocks) and never meet the guest's; exclusive create is decided by
@@ -296,8 +298,8 @@ in
       MBP_APPLE_VM_HOST_NFS_PORT    Loopback port of the relay to this Mac's nfsd
                                     (default: 2227)
       MBP_APPLE_VM_NFS_TIMEOUT      Seconds to wait for the guest to export its
-                                    shares before giving up on mounting them
-                                    (default: 300)
+                                    shares before reporting them unmounted; the
+                                    launcher keeps trying (default: 300)
       MBP_APPLE_VM_GUEST_FLAKE      Flake the guest fetches disko scripts from
       MBP_APPLE_VM_MAPPINGS         Shared directory table
                                     (default: ~/guest-vm-fs-mappings.json)
@@ -1125,10 +1127,17 @@ in
       nfs_mount_options="vers=3,tcp,port=$nfs_port,mountport=$mountd_port,locallocks,soft,intr,deadtimeout=60,retrycnt=0,nobrowse,actimeo=5"
 
       # Runs in the background while QEMU does: waits for the guest to export
-      # each share, mounts it, and records it for unmount_shares.
+      # each share, mounts it, and records it for unmount_shares. It keeps
+      # watching after that. A guest reboot leaves QEMU running but takes the
+      # guest's nfsd away, and macOS then drops an idle mount: it calls the
+      # server dead deadtimeout seconds after a request went unanswered, and
+      # only a reply to a later request stops that clock, not the reconnect.
+      # A share that is no longer mounted is mounted again once the guest
+      # exports it.
       mount_shares() {
         local row dir guest mode options err="$state_dir/nfs-mount.err"
-        local -a pending=("''${shares[@]}") waiting=()
+        local unmounted reported_late=0
+        local -A mounted=()
         local deadline=$(( SECONDS + nfs_timeout ))
         # QEMU writes its pidfile while it starts up, and removes it on the
         # way out.
@@ -1138,32 +1147,53 @@ in
           fi
           sleep 0.1
         done
-        while (( ''${#pending[@]} > 0 )); do
-          vm_pid >/dev/null || return 0
-          waiting=()
-          for row in "''${pending[@]}"; do
+        while vm_pid >/dev/null; do
+          unmounted=()
+          for row in "''${shares[@]}"; do
             IFS=$'\t' read -r dir guest mode <<<"$row"
+            if [[ -n "$(mount_line "$dir")" ]]; then
+              continue
+            fi
+            if [[ -n "''${mounted[$dir]:-}" ]]; then
+              unset "mounted[$dir]"
+              echo "the guest's $guest is no longer mounted at $dir; mounting it again once the guest exports it" >&2
+            fi
+            # Never hide something written to the bare directory meanwhile.
+            if ! dir_is_empty "$dir"; then
+              unmounted+=("$row")
+              continue
+            fi
             options=$nfs_mount_options
             if [[ "$mode" == ro ]]; then
               options="$options,rdonly"
             fi
             if timeout 30 /sbin/mount_nfs -o "$options" "127.0.0.1:$guest" "$dir" 2>"$err"; then
-              printf '%s\n' "$dir" >>"$mounts_file"
+              mounted[$dir]=1
+              if ! /usr/bin/grep -qxF "$dir" "$mounts_file" 2>/dev/null; then
+                printf '%s\n' "$dir" >>"$mounts_file"
+              fi
               echo "mounted the guest's $guest at $dir ($mode)"
             else
-              waiting+=("$row")
+              unmounted+=("$row")
             fi
           done
-          pending=(''${waiting[@]+"''${waiting[@]}"})
-          (( ''${#pending[@]} > 0 )) || break
-          if (( SECONDS >= deadline )); then
-            for row in "''${pending[@]}"; do
+          if (( ''${#unmounted[@]} == 0 )); then
+            reported_late=0
+            sleep 5
+            continue
+          fi
+          if (( SECONDS >= deadline && ! reported_late )); then
+            reported_late=1
+            for row in "''${unmounted[@]}"; do
               IFS=$'\t' read -r dir guest mode <<<"$row"
-              echo "the guest did not export $guest within ''${nfs_timeout}s; $dir stays unmounted" >&2
+              if dir_is_empty "$dir"; then
+                echo "the guest has not exported $guest within ''${nfs_timeout}s; $dir stays unmounted until it does" >&2
+              else
+                echo "$dir is no longer empty; not mounting the guest's $guest over it" >&2
+              fi
             done
             echo "the last attempt said: $(cat "$err")" >&2
             echo "mount by hand with: mount_nfs -o $nfs_mount_options 127.0.0.1:GUEST_DIR HOST_DIR" >&2
-            return 0
           fi
           sleep 2
         done
