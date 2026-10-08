@@ -1,0 +1,69 @@
+From: John Rinehart <johnrichardrinehart@gmail.com>
+Subject: [PATCH] quartz: finish launching apps that do not use GtkApplication
+
+Only GtkApplication calls -[NSApplication finishLaunching]. An app that
+uses gtk_init() never finishes launching. HIToolbox then handles
+Command-H itself and hides the app before GDK receives the key.
+
+Implement set_startup_id, which GTK calls when it maps a toplevel, to
+report startup complete. The display then calls finishLaunching, unless
+NSApp has already posted NSApplicationDidFinishLaunchingNotification.
+---
+--- a/gdk/quartz/gdkdisplay-quartz.c
++++ b/gdk/quartz/gdkdisplay-quartz.c
+@@ -195,6 +195,9 @@
+   g_source_attach (display_quartz->frame_source, NULL);
+ }
+ 
++/* Set once NSApp posts NSApplicationDidFinishLaunchingNotification. */
++static gboolean app_finished_launching = FALSE;
++
+ GdkDisplay *
+ _gdk_quartz_display_open (const gchar *display_name)
+ {
+@@ -213,6 +216,13 @@
+ 
+   /* Initialize application */
+   [NSApplication sharedApplication];
++  [[NSNotificationCenter defaultCenter]
++    addObserverForName:NSApplicationDidFinishLaunchingNotification
++                object:NSApp
++                 queue:nil
++            usingBlock:^(NSNotification *notification) {
++              app_finished_launching = TRUE;
++            }];
+   gdk_quartz_display_init_display_link (_gdk_display);
+ 
+ #if 0
+@@ -334,11 +344,11 @@
+ gdk_quartz_display_notify_startup_complete (GdkDisplay  *display,
+                                             const gchar *startup_id)
+ {
+-  /* This should call finishLaunching, but doing so causes Quartz to throw
+-   * "_createMenuRef called with existing principal MenuRef already"
+-   * " associated with menu".
+-  [NSApp finishLaunching];
+-  */
++  /* GtkApplication finishes launching in its startup handler. An app that
++   * only calls gtk_init() must finish here: until it does, HIToolbox
++   * handles Command-H itself and hides the app before GDK sees the key. */
++  if (!app_finished_launching)
++    [NSApp finishLaunching];
+ }
+ 
+ static void
+--- a/gdk/quartz/gdkwindow-quartz.c
++++ b/gdk/quartz/gdkwindow-quartz.c
+@@ -2098,7 +2098,11 @@
+ gdk_quartz_window_set_startup_id (GdkWindow   *window,
+                                   const gchar *startup_id)
+ {
+-  /* FIXME: Implement? */
++  /* GTK sets the startup ID when it maps a toplevel, which is when startup
++   * is complete. macOS has no startup notification protocol; the display
++   * only finishes launching the NSApplication. */
++  gdk_display_notify_startup_complete (gdk_window_get_display (window),
++                                       startup_id);
+ }
+ 
+ static void

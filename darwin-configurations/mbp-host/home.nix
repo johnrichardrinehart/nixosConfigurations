@@ -287,8 +287,9 @@ in
     # Karabiner rewrites its file on GUI edits, replacing the link with a
     # file; `force` lets the next switch put the declared version back.
     xdg.configFile = {
-      # The VM-viewer rule matches the frontmost app: Spicy.app by bundle
-      # identifier, and QEMU's cocoa window by its executable, by regex:
+      # The Cmd+H rule is for QEMU's cocoa window, whose menu hides it.
+      # (Spicy.app has no menu: GDK hands it Cmd+H, which goes to the
+      # guest.) It matches the frontmost app's executable by regex:
       # /nix/store/<32-char nix-base32 hash>-qemu-<version>/bin/
       # qemu-system-aarch64, also in the .qemu-system-aarch64-wrapped form
       # nixpkgs' wrapper gives the real binary. Any hash and version match,

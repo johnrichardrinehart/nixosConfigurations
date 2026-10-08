@@ -1,4 +1,4 @@
-# The SPICE client's GTK carries seven quartz fixes, so it has to be a distinct
+# The SPICE client's GTK carries eight quartz fixes, so it has to be a distinct
 # build, and spicy fixes of its own. Both live under their own attribute
 # names here: gtk3 and spice-gtk keep their usual nixpkgs meaning for
 # everything else in the set.
@@ -68,6 +68,11 @@ final: prev: {
         url = "https://gitlab.gnome.org/johnrichardrinehart/gtk/-/commit/9fe1cd3659e172b2e99e7e7de7f0f6fe5fd832a8.patch";
         hash = "sha256-+gaIJ5o31ljwUAyE5pUpEQs1j/RSpe3k9IXYareHRAc=";
       })
+      # Only GtkApplication calls -[NSApplication finishLaunching]. spicy uses
+      # gtk_init(), so it never finished launching, and HIToolbox handled
+      # Command-H itself: it hid Spicy.app before GDK saw the key, and the
+      # guest never got it. Finish launching when the first window maps.
+      ./gtk3-quartz-finish-launching.patch
     ];
   });
 

@@ -4,12 +4,11 @@
       "complex_modifications": {
         "rules": [
           {
-            "description": "Swallow Cmd+H when the VM viewer is frontmost",
+            "description": "Swallow Cmd+H when QEMU's cocoa window is frontmost",
             "manipulators": [
               {
                 "conditions": [
                   {
-                    "bundle_identifiers": ["^dev\\.johnrinehart\\.spicy$"],
                     "file_paths": [
                       "^/nix/store/[0-9a-df-np-sv-z]{32}-qemu-[0-9][^/]*/bin/(\\.qemu-system-aarch64-wrapped|qemu-system-aarch64)$"
                     ],
@@ -30,7 +29,6 @@
               {
                 "conditions": [
                   {
-                    "bundle_identifiers": ["^dev\\.johnrinehart\\.spicy$"],
                     "file_paths": [
                       "^/nix/store/[0-9a-df-np-sv-z]{32}-qemu-[0-9][^/]*/bin/(\\.qemu-system-aarch64-wrapped|qemu-system-aarch64)$"
                     ],
