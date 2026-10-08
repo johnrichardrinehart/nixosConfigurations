@@ -14,11 +14,36 @@
                       "^/nix/store/[0-9a-df-np-sv-z]{32}-qemu-[0-9][^/]*/bin/(\\.qemu-system-aarch64-wrapped|qemu-system-aarch64)$"
                     ],
                     "type": "frontmost_application_if"
+                  },
+                  {
+                    "input_sources": [{ "input_source_id": "^com\\.apple\\.keylayout\\.Dvorak$" }],
+                    "type": "input_source_if"
+                  }
+                ],
+                "from": {
+                  "key_code": "j",
+                  "modifiers": { "mandatory": ["command"], "optional": ["caps_lock"] }
+                },
+                "to": [{ "key_code": "vk_none" }],
+                "type": "basic"
+              },
+              {
+                "conditions": [
+                  {
+                    "bundle_identifiers": ["^dev\\.johnrinehart\\.spicy$"],
+                    "file_paths": [
+                      "^/nix/store/[0-9a-df-np-sv-z]{32}-qemu-[0-9][^/]*/bin/(\\.qemu-system-aarch64-wrapped|qemu-system-aarch64)$"
+                    ],
+                    "type": "frontmost_application_if"
+                  },
+                  {
+                    "input_sources": [{ "input_source_id": "^com\\.apple\\.keylayout\\.Dvorak$" }],
+                    "type": "input_source_unless"
                   }
                 ],
                 "from": {
                   "key_code": "h",
-                  "modifiers": { "mandatory": ["left_command"] }
+                  "modifiers": { "mandatory": ["command"], "optional": ["caps_lock"] }
                 },
                 "to": [{ "key_code": "vk_none" }],
                 "type": "basic"

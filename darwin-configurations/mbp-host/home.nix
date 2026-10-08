@@ -292,7 +292,9 @@ in
       # /nix/store/<32-char nix-base32 hash>-qemu-<version>/bin/
       # qemu-system-aarch64, also in the .qemu-system-aarch64-wrapped form
       # nixpkgs' wrapper gives the real binary. Any hash and version match,
-      # so a rebuild or upgrade keeps it working.
+      # so a rebuild or upgrade keeps it working. Karabiner matches physical
+      # keys, so the rule swallows whichever key types "h" in the selected
+      # layout: J under Dvorak (also for Command shortcuts), H otherwise.
       "karabiner/karabiner.json" = {
         source = ./karabiner.json;
         force = true;
