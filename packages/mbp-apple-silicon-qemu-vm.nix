@@ -298,8 +298,9 @@ in
       MBP_APPLE_VM_HOST_NFS_PORT    Loopback port of the relay to this Mac's nfsd
                                     (default: 2227)
       MBP_APPLE_VM_NFS_TIMEOUT      Seconds to wait for the guest to export its
-                                    shares before reporting them unmounted; the
-                                    launcher keeps trying (default: 300)
+                                    shares, at launch or after one drops, before
+                                    reporting them unmounted; the launcher keeps
+                                    trying (default: 300)
       MBP_APPLE_VM_GUEST_FLAKE      Flake the guest fetches disko scripts from
       MBP_APPLE_VM_MAPPINGS         Shared directory table
                                     (default: ~/guest-vm-fs-mappings.json)
@@ -1157,6 +1158,9 @@ in
             if [[ -n "''${mounted[$dir]:-}" ]]; then
               unset "mounted[$dir]"
               echo "the guest's $guest is no longer mounted at $dir; mounting it again once the guest exports it" >&2
+              # The guest gets nfs_timeout from now, not from launch.
+              deadline=$(( SECONDS + nfs_timeout ))
+              reported_late=0
             fi
             # Never hide something written to the bare directory meanwhile.
             if ! dir_is_empty "$dir"; then
